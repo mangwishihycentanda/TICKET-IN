@@ -280,6 +280,7 @@ export default function App() {
   // -- ADMIN --
   const [pendingPayments, setPendingPayments] = useState([]);
   const [pendingStaff, setPendingStaff] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   async function loadAdmin() {
     const [pays, staff] = await Promise.all([
       supabase.from("ticket_payments").select("*").eq("status", "pending").order("created_at", { ascending: false }),
@@ -287,6 +288,23 @@ export default function App() {
     ]);
     if (pays.data) setPendingPayments(pays.data);
     if (staff.data) setPendingStaff(staff.data);
+  }
+  async function loadAllUsers() {
+    const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
+    if (error) { notify("Could not load users: " + error.message, false); return; }
+    if (data) setAllUsers(data);
+  }
+  async function changeUserRole(userId, newRole) {
+    const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
+    if (error) { notify("Could not update role: " + error.message, false); return; }
+    notify("Role updated.");
+    loadAllUsers();
+  }
+  async function changeUserVerification(userId, status) {
+    const { error } = await supabase.from("profiles").update({ staff_verification_status: status }).eq("id", userId);
+    if (error) { notify("Could not update: " + error.message, false); return; }
+    notify("Updated.");
+    loadAllUsers();
   }
   async function confirmPayment(paymentId) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -311,6 +329,7 @@ export default function App() {
     if (page === "mytickets" && isClient) loadMyTickets();
     if (page === "staffboard" && isStaff) loadStaffBoard();
     if (page === "admin" && isAdmin) loadAdmin();
+    if (page === "users" && isAdmin) loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, user]);
 
@@ -368,6 +387,7 @@ export default function App() {
           ...(isClient ? [{ id: "checkin", label: "Check In" }, { id: "mytickets", label: "My Tickets" }] : []),
           ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
           ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
+          ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
         ].map(({ id, label }) => (
           <button key={id} onClick={() => setPage(id)} style={{
             width: "100%", padding: "9px 11px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 9,
@@ -467,6 +487,37 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <Btn label="Verify" primary small onClick={() => verifyStaff(s.id, "verified")} />
                   <Btn label="Reject" small onClick={() => verifyStaff(s.id, "rejected")} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {page === "users" && isAdmin && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>Manage Users</h1>
+            {allUsers.map(u => (
+              <div key={u.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{u.phone || "no phone"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <Tag kind={u.role}>{u.role}</Tag>
+                    {u.role === "staff" && <Tag kind={u.staff_verification_status}>{u.staff_verification_status}</Tag>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {["client", "staff", "admin"].map(r => r !== u.role && (
+                    <Btn key={r} label={"Set " + r} small onClick={() => changeUserRole(u.id, r)} />
+                  ))}
+                  {u.role === "staff" && u.staff_verification_status !== "verified" && (
+                    <Btn label="Verify" small primary onClick={() => changeUserVerification(u.id, "verified")} />
+                  )}
+                  {u.role === "staff" && u.staff_verification_status === "verified" && (
+                    <Btn label="Suspend" small onClick={() => changeUserVerification(u.id, "suspended")} />
+                  )}
                 </div>
               </div>
             ))}
