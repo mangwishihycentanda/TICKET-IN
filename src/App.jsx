@@ -115,7 +115,7 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!active) return;
       if (event === "SIGNED_OUT") { setUser(null); setScreen("landing"); }
-      else if (session?.user) await loadProfileIntoUser(session.user);
+      else if (session?.user) { await loadProfileIntoUser(session.user); setScreen("app"); }
     });
     return () => { active = false; listener?.subscription?.unsubscribe(); };
   }, []);
