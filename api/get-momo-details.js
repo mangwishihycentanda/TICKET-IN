@@ -8,17 +8,26 @@ import { getAuthedUser } from "./_lib.js";
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { user, error: authErr } = await getAuthedUser(req);
-  if (!user) return res.status(401).json({ error: authErr });
+  try {
+    const { user, error: authErr } = await getAuthedUser(req);
+    if (!user) return res.status(401).json({ error: authErr });
 
-  const momoNumber = process.env.MOMO_NUMBER;
-  const momoAccountName = process.env.MOMO_ACCOUNT_NAME;
+    const momoNumber = process.env.MOMO_NUMBER;
+    const momoAccountName = process.env.MOMO_ACCOUNT_NAME;
 
-  if (!momoNumber || !momoAccountName) {
-    return res.status(500).json({
-      error: "Manual payment is not configured yet. Set MOMO_NUMBER and MOMO_ACCOUNT_NAME in Vercel environment variables.",
-    });
+    if (!momoNumber || !momoAccountName) {
+      return res.status(500).json({
+        error: "Manual payment is not configured yet. Set MOMO_NUMBER and MOMO_ACCOUNT_NAME in Vercel environment variables.",
+      });
+    }
+
+    return res.status(200).json({ momoNumber, momoAccountName });
+  } catch (e) {
+    // Catches anything unexpected (bad env vars, network failure to
+    // Supabase, etc.) and returns real JSON instead of letting the
+    // function crash raw - a raw crash returns an HTML/plain-text page
+    // that the frontend can't parse as JSON, which is exactly what was
+    // happening before this fix.
+    return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
-
-  return res.status(200).json({ momoNumber, momoAccountName });
 }
