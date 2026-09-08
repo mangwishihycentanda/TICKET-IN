@@ -281,6 +281,14 @@ export default function App() {
   const [pendingPayments, setPendingPayments] = useState([]);
   const [pendingStaff, setPendingStaff] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [ticketStats, setTicketStats] = useState(null);
+  async function loadTicketStats() {
+    const { data, error } = await supabase.from("tickets").select("status");
+    if (error) { notify("Could not load ticket stats: " + error.message, false); return; }
+    const counts = { total: data.length, form_submitted: 0, open: 0, claimed: 0, in_progress: 0, resolved: 0, expired: 0 };
+    data.forEach(t => { if (counts[t.status] !== undefined) counts[t.status]++; });
+    setTicketStats(counts);
+  }
   async function loadAdmin() {
     const [pays, staff] = await Promise.all([
       supabase.from("ticket_payments").select("*").eq("status", "pending").order("created_at", { ascending: false }),
@@ -328,7 +336,7 @@ export default function App() {
     if (!user) return;
     if (page === "mytickets" && isClient) loadMyTickets();
     if (page === "staffboard" && isStaff) loadStaffBoard();
-    if (page === "admin" && isAdmin) loadAdmin();
+    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); }
     if (page === "users" && isAdmin) loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, user]);
@@ -470,6 +478,24 @@ export default function App() {
         {page === "admin" && isAdmin && (
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>Admin</h1>
+
+            {ticketStats && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 26 }}>
+                {[
+                  ["Total", ticketStats.total, C.navy],
+                  ["Open", ticketStats.open, C.teal],
+                  ["Claimed", ticketStats.claimed, C.gold],
+                  ["In Progress", ticketStats.in_progress, C.gold],
+                  ["Resolved", ticketStats.resolved, C.green],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
+                    <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: ".05em", marginTop: 3 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>Pending Payments ({pendingPayments.length})</div>
             {pendingPayments.map(p => (
               <div key={p.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
