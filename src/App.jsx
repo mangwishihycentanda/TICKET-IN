@@ -126,9 +126,17 @@ export default function App() {
     if (error) {
       const name = authUser.email.split("@")[0];
       setUser({ id: authUser.id, name, role: "client" });
+      setPage("checkin");
       return;
     }
     setUser({ id: authUser.id, name: profile.name || authUser.email.split("@")[0], role: profile.role, staff_verification_status: profile.staff_verification_status });
+    // Default to the first tab that role actually has access to - previously
+    // always defaulted to "checkin", which is blank/inaccessible for a
+    // staff or admin account, leaving them on an empty screen until they
+    // manually clicked a nav item.
+    if (profile.role === "admin") setPage("admin");
+    else if (profile.role === "staff") setPage("staffboard");
+    else setPage("checkin");
   }
 
   async function handleAuth() {
