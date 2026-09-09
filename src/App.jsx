@@ -82,8 +82,9 @@ const OLDCART_FIELDS = [
   ["aggravating_factors", "Aggravating Factors", "What makes it worse?"],
   ["relieving_factors", "Relieving Factors", "What makes it better?"],
   ["timing", "Timing", "Constant, or does it come and go?"],
-  ["severity", "Severity", "How severe, 1-10?"],
 ];
+
+const EMERGENCY_THRESHOLD = 8; // severity_level at or above this triggers urgent flagging + emergency messaging
 
 export default function App() {
   const [screen, setScreen] = useState("landing"); // landing | auth | app
@@ -164,7 +165,10 @@ export default function App() {
   async function logout() { await supabase.auth.signOut(); setPage("checkin"); }
 
   // -- CHECK-IN FORM --
-  const [ticketForm, setTicketForm] = useState({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity: "", additional_notes: "" });
+  const [ticketForm, setTicketForm] = useState({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" });
+  const [severityLevel, setSeverityLevel] = useState(null);
+  const [emergencyAck, setEmergencyAck] = useState(false);
+  const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
   const [pendingTicketId, setPendingTicketId] = useState(null);
   const [showPay, setShowPay] = useState(false);
@@ -175,18 +179,32 @@ export default function App() {
   const [momoBusy, setMomoBusy] = useState(false);
 
   async function submitCheckIn() {
-    if (!ticketForm.onset.trim() || !ticketForm.severity.trim()) {
+    if (!emergencyAck) {
+      notify("Please confirm you've read the emergency notice before continuing.", false); return;
+    }
+    if (!ticketForm.onset.trim() || !severityLevel) {
       notify("Please fill in at least Onset and Severity.", false); return;
     }
     setTicketBusy(true);
     const { data, error } = await supabase.from("tickets").insert({
       client_id: user.id, ...ticketForm,
+      severity_level: severityLevel,
+      emergency_disclaimer_acknowledged: true,
       payment_expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
     }).select("id").single();
     setTicketBusy(false);
     if (error) { notify("Could not submit: " + error.message, false); return; }
     setPendingTicketId(data.id);
-    setShowPay(true);
+    if (severityLevel >= EMERGENCY_THRESHOLD) {
+      // Urgent case: show the emergency warning prominently before payment,
+      // not just a quiet flag staff might not notice in time. This does not
+      // block them from continuing with Ticket-In - it makes sure they've
+      // also been told, clearly, that this may need emergency care now,
+      // not a queued consultation.
+      setShowEmergencyWarning(true);
+    } else {
+      setShowPay(true);
+    }
   }
 
   async function openPayment() {
@@ -220,7 +238,8 @@ export default function App() {
     if (error) { notify("Could not submit: " + error.message, false); return; }
     notify("Payment submitted! We'll confirm shortly and your consultation will open.");
     setShowPay(false); setMomoRef(""); setMomoDetails(null); setPendingTicketId(null);
-    setTicketForm({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity: "", additional_notes: "" });
+    setTicketForm({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" });
+    setSeverityLevel(null); setEmergencyAck(false);
     setPage("mytickets"); loadMyTickets();
   }
 
@@ -283,10 +302,13 @@ export default function App() {
   const [allUsers, setAllUsers] = useState([]);
   const [ticketStats, setTicketStats] = useState(null);
   async function loadTicketStats() {
-    const { data, error } = await supabase.from("tickets").select("status");
+    const { data, error } = await supabase.from("tickets").select("status, severity_level");
     if (error) { notify("Could not load ticket stats: " + error.message, false); return; }
-    const counts = { total: data.length, form_submitted: 0, open: 0, claimed: 0, in_progress: 0, resolved: 0, expired: 0 };
-    data.forEach(t => { if (counts[t.status] !== undefined) counts[t.status]++; });
+    const counts = { total: data.length, form_submitted: 0, open: 0, claimed: 0, in_progress: 0, resolved: 0, expired: 0, urgent_active: 0 };
+    data.forEach(t => {
+      if (counts[t.status] !== undefined) counts[t.status]++;
+      if (t.severity_level >= EMERGENCY_THRESHOLD && !["resolved", "expired"].includes(t.status)) counts.urgent_active++;
+    });
     setTicketStats(counts);
   }
   async function loadAdmin() {
@@ -414,12 +436,50 @@ export default function App() {
         {page === "checkin" && isClient && (
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Check In</h1>
-            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Tell us how you're feeling. This information goes to the professional who takes your case.</p>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>Tell us how you're feeling. This information goes to the professional who takes your case.</p>
+
+            <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 6 }}>Not for emergencies</div>
+              <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6 }}>
+                Ticket-In is a consultation platform, not an emergency service. If you are experiencing a life-threatening emergency - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything you believe could be life-threatening - go to the nearest hospital or call emergency services immediately. Do not wait for a Ticket-In consultation.
+              </div>
+            </div>
+
             {OLDCART_FIELDS.map(([key, label, placeholder]) => (
-              <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset" || key === "severity"} />
+              <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
             ))}
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+                Severity <span style={{ color: C.red }}>*</span>
+                <span style={{ fontWeight: 400, color: C.muted }}> (1 = very mild, 10 = worst imaginable)</span>
+              </label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                  <button key={n} onClick={() => setSeverityLevel(n)} style={{
+                    width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontFamily: "system-ui", fontWeight: 700, fontSize: 13,
+                    border: "1.5px solid " + (severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redB : C.tealB) : C.border),
+                    background: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redL : C.tealL) : C.white,
+                    color: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.red : C.teal) : C.body,
+                  }}>{n}</button>
+                ))}
+              </div>
+              {severityLevel >= EMERGENCY_THRESHOLD && (
+                <div style={{ fontSize: 11, color: C.red, marginTop: 6, fontWeight: 700 }}>
+                  This severity level may need urgent or emergency care - please read the notice above carefully.
+                </div>
+              )}
+            </div>
+            <Field label="Describe the severity in your own words (optional)" value={ticketForm.severity_description} onChange={e => setTicketForm(f => ({ ...f, severity_description: e.target.value }))} placeholder="e.g. sharp pain, hard to walk" />
+
             <Field label="Anything else?" value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
-            <Btn label={ticketBusy ? "Submitting..." : "Submit and Continue to Payment"} primary full loading={ticketBusy} onClick={submitCheckIn} />
+
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, fontSize: 12, color: C.body, cursor: "pointer" }}>
+              <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
+              I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.
+            </label>
+
+            <Btn label={ticketBusy ? "Submitting..." : "Submit and Continue to Payment"} primary full loading={ticketBusy} disabled={!emergencyAck} onClick={submitCheckIn} />
           </div>
         )}
 
@@ -454,10 +514,16 @@ export default function App() {
               </div>
             )}
             <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>Open Tickets ({openTickets.length})</div>
-            {openTickets.map(t => (
-              <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
-                <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}><strong>Onset:</strong> {t.onset}</div>
-                <div style={{ fontSize: 13, color: C.body, marginBottom: 10 }}><strong>Severity:</strong> {t.severity}</div>
+            {openTickets.slice().sort((a, b) => (b.severity_level || 0) - (a.severity_level || 0)).map(t => (
+              <div key={t.id} style={{
+                background: C.white, borderRadius: 12, padding: 16, marginBottom: 10,
+                border: t.severity_level >= EMERGENCY_THRESHOLD ? "2px solid " + C.redB : "1px solid " + C.border,
+              }}>
+                {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                <div style={{ fontSize: 13, color: C.ink, marginTop: 6, marginBottom: 4 }}><strong>Onset:</strong> {t.onset}</div>
+                <div style={{ fontSize: 13, color: C.body, marginBottom: 10 }}>
+                  <strong>Severity:</strong> {t.severity_level}/10{t.severity_description ? " - " + t.severity_description : ""}
+                </div>
                 <Btn label="Claim Ticket" primary small onClick={() => claimTicket(t.id)} disabled={user.staff_verification_status !== "verified"} />
               </div>
             ))}
@@ -466,6 +532,7 @@ export default function App() {
               <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                  {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
                 </div>
                 <div style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>{t.onset}</div>
                 {t.status === "claimed" && <Btn label="Start Consultation" primary small onClick={() => startConsultation(t.id)} />}
@@ -483,6 +550,7 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 26 }}>
                 {[
                   ["Total", ticketStats.total, C.navy],
+                  ["Urgent (active)", ticketStats.urgent_active, C.red],
                   ["Open", ticketStats.open, C.teal],
                   ["Claimed", ticketStats.claimed, C.gold],
                   ["In Progress", ticketStats.in_progress, C.gold],
@@ -550,6 +618,18 @@ export default function App() {
           </div>
         )}
       </div>
+
+      <Modal open={showEmergencyWarning} onClose={() => {}} title="Please Read This First">
+        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>
+            You reported a severity of <strong>{severityLevel}/10</strong>. If what you're experiencing feels life-threatening - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything similarly urgent - <strong>please go to the nearest hospital or call emergency services now</strong>, rather than waiting for a Ticket-In consultation.
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          Your ticket has been marked urgent and will be shown to staff as a priority. If you believe this can safely wait for a consultation, you can continue below.
+        </p>
+        <Btn label="I understand, continue to payment" primary full onClick={() => { setShowEmergencyWarning(false); setShowPay(true); }} />
+      </Modal>
 
       <Modal open={showPay} onClose={() => setShowPay(false)} title="Complete Payment">
         <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 16, textAlign: "center" }}>
