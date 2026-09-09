@@ -91,6 +91,9 @@ export default function App() {
   const [isReg, setIsReg] = useState(true);
   const [authName, setAuthName] = useState(""), [authEmail, setAuthEmail] = useState(""), [authPass, setAuthPass] = useState("");
   const [authRole, setAuthRole] = useState("client");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [issuingInstitution, setIssuingInstitution] = useState("");
+  const [specialty, setSpecialty] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("checkin");
@@ -142,18 +145,28 @@ export default function App() {
 
   async function handleAuth() {
     if (!authEmail || !authPass) { notify("Email and password required.", false); return; }
+    if (isReg && authRole === "staff" && (!licenseNumber.trim() || !issuingInstitution.trim())) {
+      notify("License number and issuing institution are required for professional accounts.", false); return;
+    }
     setAuthBusy(true);
     if (isReg) {
       if (!authName.trim()) { setAuthBusy(false); notify("Name is required.", false); return; }
       const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName, role: authRole } } });
-      setAuthBusy(false);
-      if (error) { notify(error.message, false); return; }
+      if (error) { setAuthBusy(false); notify(error.message, false); return; }
       if (data.user) {
         // Trigger always forces role='client' server-side regardless of what
         // was sent above - if this account should be staff, set that
         // explicitly as a one-time follow-up update.
-        if (authRole === "staff") await supabase.from("profiles").update({ role: "staff" }).eq("id", data.user.id);
+        if (authRole === "staff") {
+          await supabase.from("profiles").update({ role: "staff" }).eq("id", data.user.id);
+          const { error: credErr } = await supabase.from("staff_credentials").insert({
+            staff_id: data.user.id, license_number: licenseNumber.trim(),
+            issuing_institution: issuingInstitution.trim(), specialty: specialty.trim() || null,
+          });
+          if (credErr) notify("Account created, but could not save credentials: " + credErr.message, false);
+        }
       }
+      setAuthBusy(false);
       notify("Account created!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPass });
@@ -312,17 +325,25 @@ export default function App() {
     setTicketStats(counts);
   }
   async function loadAdmin() {
-    const [pays, staff] = await Promise.all([
+    const [pays, staff, creds] = await Promise.all([
       supabase.from("ticket_payments").select("*").eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").eq("role", "staff").eq("staff_verification_status", "pending"),
+      supabase.from("staff_credentials").select("*"),
     ]);
     if (pays.data) setPendingPayments(pays.data);
-    if (staff.data) setPendingStaff(staff.data);
+    if (staff.data) {
+      const credsById = Object.fromEntries((creds.data || []).map(c => [c.staff_id, c]));
+      setPendingStaff(staff.data.map(s => ({ ...s, credentials: credsById[s.id] })));
+    }
   }
   async function loadAllUsers() {
-    const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
-    if (error) { notify("Could not load users: " + error.message, false); return; }
-    if (data) setAllUsers(data);
+    const [usersRes, credsRes] = await Promise.all([
+      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      supabase.from("staff_credentials").select("*"),
+    ]);
+    if (usersRes.error) { notify("Could not load users: " + usersRes.error.message, false); return; }
+    const credsById = Object.fromEntries((credsRes.data || []).map(c => [c.staff_id, c]));
+    if (usersRes.data) setAllUsers(usersRes.data.map(u => ({ ...u, credentials: credsById[u.id] })));
   }
   async function changeUserRole(userId, newRole) {
     const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
@@ -331,7 +352,9 @@ export default function App() {
     loadAllUsers();
   }
   async function changeUserVerification(userId, status) {
-    const { error } = await supabase.from("profiles").update({ staff_verification_status: status }).eq("id", userId);
+    const patch = { staff_verification_status: status };
+    if (status === "verified") { patch.verified_by = user.id; patch.verified_at = new Date().toISOString(); }
+    const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
     if (error) { notify("Could not update: " + error.message, false); return; }
     notify("Updated.");
     loadAllUsers();
@@ -348,7 +371,9 @@ export default function App() {
     loadAdmin();
   }
   async function verifyStaff(staffId, status) {
-    const { error } = await supabase.from("profiles").update({ staff_verification_status: status }).eq("id", staffId);
+    const patch = { staff_verification_status: status };
+    if (status === "verified") { patch.verified_by = user.id; patch.verified_at = new Date().toISOString(); }
+    const { error } = await supabase.from("profiles").update(patch).eq("id", staffId);
     if (error) { notify("Could not update: " + error.message, false); return; }
     notify(status === "verified" ? "Staff verified." : "Staff rejected.");
     loadAdmin();
@@ -396,6 +421,16 @@ export default function App() {
           </div>
         )}
         {isReg && <Field label="Full Name" value={authName} onChange={e => setAuthName(e.target.value)} required />}
+        {isReg && authRole === "staff" && (
+          <>
+            <Field label="License / Registration Number" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required />
+            <Field label="Issuing Institution" value={issuingInstitution} onChange={e => setIssuingInstitution(e.target.value)} required />
+            <Field label="Specialty (optional)" value={specialty} onChange={e => setSpecialty(e.target.value)} />
+            <p style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+              An admin will review these before your account can claim tickets.
+            </p>
+          </>
+        )}
         <Field label="Email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} type="email" required />
         <Field label="Password" value={authPass} onChange={e => setAuthPass(e.target.value)} type="password" required />
         <Btn label={authBusy ? "Please wait..." : isReg ? "Create Account" : "Sign In"} primary full loading={authBusy} onClick={handleAuth} />
@@ -576,8 +611,17 @@ export default function App() {
             ))}
             <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>Pending Staff Verification ({pendingStaff.length})</div>
             {pendingStaff.map(s => (
-              <div key={s.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{s.name}</div>
+              <div key={s.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{s.name}</div>
+                {s.credentials ? (
+                  <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                    <div><strong>License #:</strong> {s.credentials.license_number || "-"}</div>
+                    <div><strong>Institution:</strong> {s.credentials.issuing_institution || "-"}</div>
+                    {s.credentials.specialty && <div><strong>Specialty:</strong> {s.credentials.specialty}</div>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>No credentials submitted - do not verify without checking why.</div>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <Btn label="Verify" primary small onClick={() => verifyStaff(s.id, "verified")} />
                   <Btn label="Reject" small onClick={() => verifyStaff(s.id, "rejected")} />
@@ -602,6 +646,18 @@ export default function App() {
                     {u.role === "staff" && <Tag kind={u.staff_verification_status}>{u.staff_verification_status}</Tag>}
                   </div>
                 </div>
+                {u.role === "staff" && (
+                  u.credentials ? (
+                    <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                      <div><strong>License #:</strong> {u.credentials.license_number || "-"}</div>
+                      <div><strong>Institution:</strong> {u.credentials.issuing_institution || "-"}</div>
+                      {u.credentials.specialty && <div><strong>Specialty:</strong> {u.credentials.specialty}</div>}
+                      {u.verified_at && <div style={{ color: C.muted, fontSize: 11 }}>Verified {new Date(u.verified_at).toLocaleDateString()}</div>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>No credentials on file.</div>
+                  )
+                )}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {["client", "staff", "admin"].map(r => r !== u.role && (
                     <Btn key={r} label={"Set " + r} small onClick={() => changeUserRole(u.id, r)} />
