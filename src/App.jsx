@@ -83,6 +83,101 @@ const OLDCART_FIELDS = [
   ["timing", "Timing", "Constant, or does it come and go?"],
 ];
 
+// ============================================================================
+// PRIVACY POLICY / TERMS OF SERVICE - rendered in-app, mirrors
+// PRIVACY_POLICY.md / TERMS_OF_SERVICE.md in the repo. Kept as plain
+// components (not markdown-parsed from the .md files) so there's no
+// build-time dependency on reading a file - if you edit the wording,
+// update both this and the .md file to keep them in sync.
+// ============================================================================
+const Sec = ({ title, children }) => (
+  <div style={{ marginBottom: 18 }}>
+    {title && <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginBottom: 6 }}>{title}</div>}
+    <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>{children}</div>
+  </div>
+);
+
+function PrivacyPolicyContent() {
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Privacy Policy</div>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 20 }}>Last updated: September 2026</div>
+
+      <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 12, color: C.body, lineHeight: 1.6 }}>
+        This is a good-faith interim Privacy Policy, written to accurately describe what Ticket-In actually collects and does with your information today. It is <strong>not</strong> a substitute for formal authorization from Cameroon's Personal Data Protection Authority under Law No. 2024/017, which is required before this kind of processing can lawfully continue at any real scale. That authorization has not yet been obtained.
+      </div>
+
+      <Sec title="Who we are">Ticket-In is a freelance healthcare consultation platform connecting clients with independent, freelance healthcare professionals in Cameroon.</Sec>
+
+      <Sec title="What we collect">
+        <strong>If you check in as a client:</strong> your phone number; the health information you provide (onset, location, duration, character, aggravating/relieving factors, timing, severity, anything else you write); a system-generated code to look up your ticket later (no account, name, or email required); the mobile money transaction reference you submit when paying (we never see your mobile money account details themselves).<br /><br />
+        <strong>If you register as staff:</strong> your name, email, password, professional license/registration number, issuing institution, and specialty, plus records of tickets you claim and the clinical notes you write.<br /><br />
+        <strong>What we don't collect:</strong> we don't ask your name or any ID as a client. We do not currently verify age - if you're under 18, please involve a parent or guardian; we don't yet have a way to collect the parental consent Cameroonian law requires for a minor's data, and this is a real, acknowledged gap.
+      </Sec>
+
+      <Sec title="How we use your information">
+        Your check-in is shown to the professional who claims your ticket. They write you a separate, plain-language summary - your full clinical notes stay internal to staff and admin, never shown to you in raw form. Your phone and code are used only for your own lookups and for admin follow-up on cases needing attention. Payment references are used only to confirm and activate your consultation.
+      </Sec>
+
+      <Sec title="Who can see your information">
+        The staff member who claims your ticket, and platform admins. No other client and no unverified staff can see it. Clinical notes are restricted at the database level to the writing staff member and admins - enforced technically, not just promised. We do not sell your data or share it for advertising.
+      </Sec>
+
+      <Sec title="Where your information is stored">
+        We use Supabase, a third-party database provider - your data is likely stored outside Cameroon. Cross-border transfer requires separate Data Protection Authority authorization, which has not yet been obtained. We're working to confirm and formalize this.
+      </Sec>
+
+      <Sec title="How long we keep it">We have not yet set a formal retention policy. Until we do, assume records are retained indefinitely - this is an open item toward full compliance.</Sec>
+
+      <Sec title="Your rights">You have the right to know what we hold about you, request correction, and request deletion. Contact: [not yet published].</Sec>
+
+      <Sec title="Payments">We don't process mobile money automatically. You send money directly via mobile money, then tell us the reference - we never have access to your mobile money account, PIN, or balance.</Sec>
+
+      <Sec title="Changes">We'll update this as our practices change, especially once formal authorization is obtained.</Sec>
+    </div>
+  );
+}
+
+function TermsOfServiceContent() {
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Terms of Service</div>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 20 }}>Last updated: September 2026</div>
+
+      <Sec title="What Ticket-In is - and isn't">
+        Ticket-In connects clients with independent, freelance healthcare professionals. <strong>Ticket-In is not an emergency service and does not replace in-person or emergency medical care.</strong> If you're experiencing a life-threatening emergency, go to the nearest hospital or call emergency services immediately.<br /><br />
+        Ticket-In is a platform, not a healthcare provider. Professionals using it operate independently, not as our employees or agents. Clinical judgment and treatment decisions are made independently by the professional handling your case.
+      </Sec>
+
+      <Sec title="Who can use Ticket-In">
+        We don't currently verify client age. If you're under 18, please have a parent or guardian aware of or assisting with your use of this service.<br /><br />
+        Staff must provide accurate license/registration information. Providing false credentials is a serious violation and may lead to suspension and reporting to the relevant licensing body (e.g. the Cameroon Medical Council or the Ordre National des Infirmiers, Infirmières et Sages-Femmes du Cameroun). Admin verification is a good-faith review of what you provide, not yet independent real-time confirmation against the issuing institution.
+      </Sec>
+
+      <Sec title="How the service works">
+        1) Check in and receive a code. 2) Submit payment (1,600 XAF) via manual mobile money. 3) Once admin confirms payment, a verified staff member can claim your consultation. 4) They provide the consultation, then write you a plain-language summary and separate clinical notes for our records.
+      </Sec>
+
+      <Sec title="Payments">
+        1,600 XAF per consultation, manual mobile money, confirmed by admin - there may be a delay while this happens. We don't currently offer refunds for claimed/completed consultations; contact us if a payment issue occurs before claiming.
+      </Sec>
+
+      <Sec title="Clinical safety and independence">
+        Clinical decisions are made independently, never influenced by platform commercial interests. We don't incentivize unnecessary consultations, referrals, or purchases. High-severity check-ins are flagged internally for admin follow-up - this is a safety aid, not a guarantee of rapid response, and never a substitute for seeking emergency care directly.
+      </Sec>
+
+      <Sec title="Limitation of liability">
+        Ticket-In is not a party to the clinical relationship between you and the professional you consult. To the fullest extent permitted by law, we are not liable for clinical decisions, advice, or outcomes - that responsibility rests with the professional providing care. This doesn't affect any rights you have under Cameroonian law that can't be excluded by these Terms.
+      </Sec>
+
+      <Sec title="Governing law">These Terms are governed by the laws of the Republic of Cameroon.</Sec>
+
+      <Sec title="Contact">Questions: [not yet published].</Sec>
+    </div>
+  );
+}
+
+
 const EMPTY_TICKET_FORM = { onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" };
 const EMERGENCY_THRESHOLD = 8; // severity_level at or above this triggers urgent flagging + emergency messaging
 
@@ -451,6 +546,19 @@ export default function App() {
           <Btn label="I'm a Healthcare Professional" onClick={() => { setScreen("auth"); setIsReg(true); }} />
         </div>
       </div>
+      <div style={{ padding: "18px 24px", textAlign: "center" }}>
+        <span onClick={() => setScreen("privacy")} style={{ color: C.muted, fontSize: 12, cursor: "pointer", marginRight: 18 }}>Privacy Policy</span>
+        <span onClick={() => setScreen("terms")} style={{ color: C.muted, fontSize: 12, cursor: "pointer" }}>Terms of Service</span>
+      </div>
+    </div>
+  );
+
+  if (screen === "privacy" || screen === "terms") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", background: C.white, borderRadius: 16, padding: 28 }}>
+        <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 18 }}>&larr; Back</button>
+        {screen === "privacy" ? <PrivacyPolicyContent /> : <TermsOfServiceContent />}
+      </div>
     </div>
   );
 
@@ -526,10 +634,13 @@ export default function App() {
 
         <Field label="Anything else?" value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
 
-        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, fontSize: 12, color: C.body, cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10, fontSize: 12, color: C.body, cursor: "pointer" }}>
           <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
           I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.
         </label>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>
+          By continuing you agree to our <span onClick={() => setScreen("terms")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Terms of Service</span> and <span onClick={() => setScreen("privacy")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Privacy Policy</span>.
+        </div>
 
         <Btn label={ticketBusy ? "Submitting..." : "Submit and Continue"} primary full loading={ticketBusy} disabled={!emergencyAck} onClick={submitCheckIn} />
       </div>
@@ -604,6 +715,11 @@ export default function App() {
         )}
         <Field label="Email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} type="email" required />
         <Field label="Password" value={authPass} onChange={e => setAuthPass(e.target.value)} type="password" required />
+        {isReg && (
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+            By creating an account you agree to our <span onClick={() => setScreen("terms")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Terms of Service</span> and <span onClick={() => setScreen("privacy")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Privacy Policy</span>.
+          </div>
+        )}
         <Btn label={authBusy ? "Please wait..." : isReg ? "Create Account" : "Sign In"} primary full loading={authBusy} onClick={handleAuth} />
         <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: C.muted }}>
           {isReg ? "Already have an account? " : "New here? "}
