@@ -270,6 +270,9 @@ export default function App() {
   // ==========================================================================
   const [ticketForm, setTicketForm] = useState(EMPTY_TICKET_FORM);
   const [checkinPhone, setCheckinPhone] = useState("");
+  const [isAdult, setIsAdult] = useState(null); // null = not yet answered, true/false
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianPhone, setGuardianPhone] = useState("");
   const [severityLevel, setSeverityLevel] = useState(null);
   const [emergencyAck, setEmergencyAck] = useState(false);
   const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
@@ -287,12 +290,19 @@ export default function App() {
     if (!emergencyAck) { notify("Please confirm you've read the emergency notice before continuing.", false); return; }
     if (!checkinPhone.trim()) { notify("Please enter your phone number.", false); return; }
     if (!ticketForm.onset.trim() || !severityLevel) { notify("Please fill in at least Onset and Severity.", false); return; }
+    if (isAdult === null) { notify("Please confirm whether you are 18 or older.", false); return; }
+    if (isAdult === false && (!guardianName.trim() || !guardianPhone.trim())) {
+      notify("A parent or guardian's name and phone number are required.", false); return;
+    }
 
     setTicketBusy(true);
     try {
       const res = await fetch("/api/submit-checkin", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: checkinPhone.trim(), ...ticketForm, severity_level: severityLevel, emergency_disclaimer_acknowledged: true }),
+        body: JSON.stringify({
+          phone: checkinPhone.trim(), ...ticketForm, severity_level: severityLevel, emergency_disclaimer_acknowledged: true,
+          is_adult: isAdult, guardian_name: isAdult ? null : guardianName.trim(), guardian_phone: isAdult ? null : guardianPhone.trim(),
+        }),
       });
       const body = await res.json();
       setTicketBusy(false);
@@ -345,6 +355,7 @@ export default function App() {
       setShowPay(false); setMomoRef(""); setMomoDetails(null);
       setScreen("landing");
       setTicketForm(EMPTY_TICKET_FORM); setSeverityLevel(null); setEmergencyAck(false);
+      setIsAdult(null); setGuardianName(""); setGuardianPhone("");
       setPendingTicketId(null); setClientCode(null); setCheckinPhone("");
     } catch (e) {
       setMomoBusy(false);
@@ -605,6 +616,32 @@ export default function App() {
 
         <Field label="Phone Number" value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder="e.g. 6XX XXX XXX" required />
 
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+            Are you 18 or older? <span style={{ color: C.red }}>*</span>
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setIsAdult(true)} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: isAdult === true ? C.tealL : C.white, border: "1.5px solid " + (isAdult === true ? C.tealB : C.border), color: isAdult === true ? C.teal : C.body,
+            }}>Yes, 18 or older</button>
+            <button onClick={() => setIsAdult(false)} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: isAdult === false ? C.tealL : C.white, border: "1.5px solid " + (isAdult === false ? C.tealB : C.border), color: isAdult === false ? C.teal : C.body,
+            }}>No, under 18</button>
+          </div>
+        </div>
+
+        {isAdult === false && (
+          <div style={{ background: C.tealL, border: "1.5px solid " + C.tealB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6, marginBottom: 12 }}>
+              Ticket-In requires a parent or guardian's details for anyone under 18. Please have them check in with you, or provide their information below.
+            </div>
+            <Field label="Parent/Guardian Name" value={guardianName} onChange={e => setGuardianName(e.target.value)} required />
+            <Field label="Parent/Guardian Phone" value={guardianPhone} onChange={e => setGuardianPhone(e.target.value)} required />
+          </div>
+        )}
+
         {OLDCART_FIELDS.map(([key, label, placeholder]) => (
           <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
         ))}
@@ -775,11 +812,13 @@ export default function App() {
                 border: t.severity_level >= EMERGENCY_THRESHOLD ? "2px solid " + C.redB : "1px solid " + C.border,
               }}>
                 {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                {t.is_minor && <Tag kind="pending">Minor - Guardian on File</Tag>}
                 <div style={{ fontSize: 13, color: C.ink, marginTop: 6, marginBottom: 4 }}><strong>Onset:</strong> {t.onset}</div>
                 <div style={{ fontSize: 13, color: C.body, marginBottom: 4 }}>
                   <strong>Severity:</strong> {t.severity_level}/10{t.severity_description ? " - " + t.severity_description : ""}
                 </div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Contact: {t.client_phone}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: t.is_minor ? 2 : 10 }}>Contact: {t.client_phone}</div>
+                {t.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Guardian: {t.guardian_name} - {t.guardian_phone}</div>}
                 <Btn label="Claim Ticket" primary small onClick={() => claimTicket(t.id)} disabled={user.staff_verification_status !== "verified"} />
               </div>
             ))}
@@ -789,9 +828,11 @@ export default function App() {
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
                   {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                  {t.is_minor && <Tag kind="pending">Minor</Tag>}
                 </div>
                 <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{t.onset}</div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Contact: {t.client_phone}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: t.is_minor ? 2 : 10 }}>Contact: {t.client_phone}</div>
+                {t.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Guardian: {t.guardian_name} - {t.guardian_phone}</div>}
                 {t.status === "claimed" && <Btn label="Start Consultation" primary small onClick={() => startConsultation(t.id)} />}
                 {t.status === "in_progress" && <Btn label="Resolve & Add Notes" primary small onClick={() => setResolvingTicket(t.id)} />}
               </div>

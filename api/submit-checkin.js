@@ -23,6 +23,7 @@ export default async function handler(req, res) {
       phone, onset, location, duration, character, aggravating_factors,
       relieving_factors, timing, severity_level, severity_description,
       additional_notes, emergency_disclaimer_acknowledged,
+      is_adult, guardian_name, guardian_phone,
     } = req.body || {};
 
     if (!phone || !phone.trim()) return res.status(400).json({ error: "Phone number is required." });
@@ -32,6 +33,13 @@ export default async function handler(req, res) {
     }
     if (!emergency_disclaimer_acknowledged) {
       return res.status(400).json({ error: "Please confirm you've read the emergency notice." });
+    }
+    if (is_adult === undefined || is_adult === null) {
+      return res.status(400).json({ error: "Please confirm whether you are 18 or older." });
+    }
+    const isMinor = is_adult !== true;
+    if (isMinor && (!guardian_name?.trim() || !guardian_phone?.trim())) {
+      return res.status(400).json({ error: "A parent or guardian's name and phone number are required for anyone under 18." });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -56,6 +64,9 @@ export default async function handler(req, res) {
         severity_description: severity_description?.trim() || null,
         additional_notes: additional_notes?.trim() || null,
         emergency_disclaimer_acknowledged: true,
+        is_minor: isMinor,
+        guardian_name: isMinor ? guardian_name.trim() : null,
+        guardian_phone: isMinor ? guardian_phone.trim() : null,
         payment_expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
       }).select("id, client_code").single();
 
