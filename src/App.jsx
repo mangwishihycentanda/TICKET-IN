@@ -425,6 +425,45 @@ export default function App() {
   const [resolveSummary, setResolveSummary] = useState("");
   const [resolvingTicket, setResolvingTicket] = useState(null);
 
+  // -- STAFF FORUM --
+  const [forumPosts, setForumPosts] = useState([]);
+  const [forumLoading, setForumLoading] = useState(false);
+  const [newThreadSubject, setNewThreadSubject] = useState("");
+  const [newThreadBody, setNewThreadBody] = useState("");
+  const [expandedThread, setExpandedThread] = useState(null);
+  const [replyBody, setReplyBody] = useState("");
+
+  async function loadForum() {
+    setForumLoading(true);
+    const { data, error } = await supabase.from("forum_posts").select("*").order("created_at", { ascending: false });
+    if (!error && data) setForumPosts(data);
+    setForumLoading(false);
+  }
+  async function submitThread() {
+    if (!newThreadBody.trim()) { notify("Write something before posting.", false); return; }
+    const { error } = await supabase.from("forum_posts").insert({
+      staff_id: user.id, staff_name: user.name, subject: newThreadSubject.trim() || null, body: newThreadBody.trim(), parent_post_id: null,
+    });
+    if (error) { notify("Could not post: " + error.message, false); return; }
+    setNewThreadSubject(""); setNewThreadBody("");
+    loadForum();
+  }
+  async function submitReply(parentId) {
+    if (!replyBody.trim()) return;
+    const { error } = await supabase.from("forum_posts").insert({
+      staff_id: user.id, staff_name: user.name, parent_post_id: parentId, body: replyBody.trim(),
+    });
+    if (error) { notify("Could not reply: " + error.message, false); return; }
+    setReplyBody(""); setExpandedThread(null);
+    loadForum();
+  }
+  async function deleteForumPost(id) {
+    if (!confirm("Remove this post?")) return;
+    const { error } = await supabase.from("forum_posts").update({ is_deleted: true }).eq("id", id);
+    if (error) { notify("Could not remove: " + error.message, false); return; }
+    loadForum();
+  }
+
   async function submitResolution() {
     if (!resolveSummary.trim()) { notify("Please write a summary for the client.", false); return; }
     const { error: noteErr } = await supabase.from("ticket_clinical_notes").insert({ ticket_id: resolvingTicket, staff_id: user.id, ...resolveNotes });
@@ -537,6 +576,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     if (page === "staffboard" && isStaff) loadStaffBoard();
+    if (page === "forum" && (isStaff || isAdmin)) loadForum();
     if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); }
     if (page === "users" && isAdmin) loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -776,6 +816,7 @@ export default function App() {
         <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 24, fontFamily: "Georgia,serif" }}>Ticket-In</div>
         {[
           ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
+          ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
           ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
           ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
         ].map(({ id, label }) => (
@@ -837,6 +878,77 @@ export default function App() {
                 {t.status === "in_progress" && <Btn label="Resolve & Add Notes" primary small onClick={() => setResolvingTicket(t.id)} />}
               </div>
             ))}
+          </div>
+        )}
+
+        {page === "forum" && (isStaff || isAdmin) && (
+          <div style={{ maxWidth: 640 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Forum</h1>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>
+              Professional discussion between staff and admin. Not visible to clients.
+            </p>
+
+            {(isAdmin || user.staff_verification_status === "verified") ? (
+              <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>Start a Discussion</div>
+                <Field label="Subject (optional)" value={newThreadSubject} onChange={e => setNewThreadSubject(e.target.value)} placeholder="e.g. Case management" />
+                <Field label="What's on your mind?" value={newThreadBody} onChange={e => setNewThreadBody(e.target.value)} rows={3} placeholder="Ask a question or start a discussion..." />
+                <Btn label="Post" primary full onClick={submitThread} />
+              </div>
+            ) : (
+              <div style={{ background: C.surf, borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "center" }}>
+                You'll be able to post once your account is verified. You can still read the forum.
+              </div>
+            )}
+
+            {forumLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>Loading...</div>
+            ) : (
+              forumPosts.filter(p => !p.parent_post_id && !p.is_deleted).map(thread => {
+                const replies = forumPosts.filter(p => p.parent_post_id === thread.id && !p.is_deleted);
+                const canModerate = isAdmin || user.id === thread.staff_id;
+                return (
+                  <div key={thread.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div>
+                        {thread.subject && <Tag kind="pending">{thread.subject}</Tag>}
+                        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>{thread.staff_name} <span style={{ fontWeight: 400, color: C.muted }}>&middot; {new Date(thread.created_at).toLocaleDateString()}</span></div>
+                      </div>
+                      {canModerate && <button onClick={() => deleteForumPost(thread.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", fontFamily: "system-ui" }}>Remove</button>}
+                    </div>
+                    <div style={{ fontSize: 14, color: C.ink, lineHeight: 1.6, marginBottom: 10 }}>{thread.body}</div>
+
+                    {replies.length > 0 && (
+                      <div style={{ borderLeft: "2px solid " + C.surf, paddingLeft: 12, marginBottom: 10 }}>
+                        {replies.map(r => (
+                          <div key={r.id} style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>{r.staff_name}
+                              {(isAdmin || user.id === r.staff_id) && <button onClick={() => deleteForumPost(r.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 10, cursor: "pointer", marginLeft: 8, fontFamily: "system-ui" }}>Remove</button>}
+                            </div>
+                            <div style={{ fontSize: 13, color: C.body, lineHeight: 1.5 }}>{r.body}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(isAdmin || user.staff_verification_status === "verified") && (
+                      expandedThread === thread.id ? (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Write a reply..."
+                            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid " + C.border, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                          <Btn label="Reply" small onClick={() => submitReply(thread.id)} />
+                        </div>
+                      ) : (
+                        <button onClick={() => setExpandedThread(thread.id)} style={{ background: "none", border: "none", color: C.teal, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "system-ui" }}>Reply</button>
+                      )
+                    )}
+                  </div>
+                );
+              })
+            )}
+            {!forumLoading && forumPosts.filter(p => !p.parent_post_id && !p.is_deleted).length === 0 && (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>No discussions yet - be the first to post.</div>
+            )}
           </div>
         )}
 
