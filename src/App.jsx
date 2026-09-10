@@ -14,7 +14,6 @@ const C = {
 };
 
 const PLAN_AMOUNT = 1600;
-const STAFF_SUB_AMOUNT = 5500;
 
 // ============================================================================
 // SHARED UI
@@ -84,19 +83,22 @@ const OLDCART_FIELDS = [
   ["timing", "Timing", "Constant, or does it come and go?"],
 ];
 
+const EMPTY_TICKET_FORM = { onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" };
 const EMERGENCY_THRESHOLD = 8; // severity_level at or above this triggers urgent flagging + emergency messaging
 
 export default function App() {
-  const [screen, setScreen] = useState("landing"); // landing | auth | app
+  // screen: landing | checkin | checkin-code | lookup | auth | app
+  // "checkin"/"checkin-code"/"lookup" are account-free, top-level, for clients.
+  // "auth"/"app" are for staff/admin only - clients never log in at all.
+  const [screen, setScreen] = useState("landing");
   const [isReg, setIsReg] = useState(true);
   const [authName, setAuthName] = useState(""), [authEmail, setAuthEmail] = useState(""), [authPass, setAuthPass] = useState("");
-  const [authRole, setAuthRole] = useState("client");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [issuingInstitution, setIssuingInstitution] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [user, setUser] = useState(null);
-  const [page, setPage] = useState("checkin");
+  const [page, setPage] = useState("staffboard");
   const [toast, setToast] = useState({ show: false, msg: "", ok: true });
 
   function notify(msg, ok = true) {
@@ -104,17 +106,15 @@ export default function App() {
     setTimeout(() => setToast(t => ({ ...t, show: false })), 3200);
   }
 
-  const isClient = user && user.role === "client";
   const isStaff = user && user.role === "staff";
   const isAdmin = user && user.role === "admin";
 
-  // -- AUTH --
+  // -- AUTH (staff/admin only) --
   useEffect(() => {
     let active = true;
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!active) return;
       if (session?.user) { await loadProfileIntoUser(session.user); setScreen("app"); }
-      else setScreen("landing");
     });
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!active) return;
@@ -129,42 +129,34 @@ export default function App() {
       .select("name, role, staff_verification_status").eq("id", authUser.id).single();
     if (error) {
       const name = authUser.email.split("@")[0];
-      setUser({ id: authUser.id, name, role: "client" });
-      setPage("checkin");
+      setUser({ id: authUser.id, name, role: "staff" });
+      setPage("staffboard");
       return;
     }
     setUser({ id: authUser.id, name: profile.name || authUser.email.split("@")[0], role: profile.role, staff_verification_status: profile.staff_verification_status });
-    // Default to the first tab that role actually has access to - previously
-    // always defaulted to "checkin", which is blank/inaccessible for a
-    // staff or admin account, leaving them on an empty screen until they
-    // manually clicked a nav item.
     if (profile.role === "admin") setPage("admin");
-    else if (profile.role === "staff") setPage("staffboard");
-    else setPage("checkin");
+    else setPage("staffboard");
   }
 
   async function handleAuth() {
     if (!authEmail || !authPass) { notify("Email and password required.", false); return; }
-    if (isReg && authRole === "staff" && (!licenseNumber.trim() || !issuingInstitution.trim())) {
-      notify("License number and issuing institution are required for professional accounts.", false); return;
+    if (isReg && (!licenseNumber.trim() || !issuingInstitution.trim())) {
+      notify("License number and issuing institution are required.", false); return;
     }
     setAuthBusy(true);
     if (isReg) {
       if (!authName.trim()) { setAuthBusy(false); notify("Name is required.", false); return; }
-      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName, role: authRole } } });
+      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName, role: "staff" } } });
       if (error) { setAuthBusy(false); notify(error.message, false); return; }
       if (data.user) {
         // Trigger always forces role='client' server-side regardless of what
-        // was sent above - if this account should be staff, set that
-        // explicitly as a one-time follow-up update.
-        if (authRole === "staff") {
-          await supabase.from("profiles").update({ role: "staff" }).eq("id", data.user.id);
-          const { error: credErr } = await supabase.from("staff_credentials").insert({
-            staff_id: data.user.id, license_number: licenseNumber.trim(),
-            issuing_institution: issuingInstitution.trim(), specialty: specialty.trim() || null,
-          });
-          if (credErr) notify("Account created, but could not save credentials: " + credErr.message, false);
-        }
+        // was sent above - staff is a one-time follow-up update.
+        await supabase.from("profiles").update({ role: "staff" }).eq("id", data.user.id);
+        const { error: credErr } = await supabase.from("staff_credentials").insert({
+          staff_id: data.user.id, license_number: licenseNumber.trim(),
+          issuing_institution: issuingInstitution.trim(), specialty: specialty.trim() || null,
+        });
+        if (credErr) notify("Account created, but could not save credentials: " + credErr.message, false);
       }
       setAuthBusy(false);
       notify("Account created!");
@@ -175,15 +167,20 @@ export default function App() {
     }
   }
 
-  async function logout() { await supabase.auth.signOut(); setPage("checkin"); }
+  async function logout() { await supabase.auth.signOut(); }
 
-  // -- CHECK-IN FORM --
-  const [ticketForm, setTicketForm] = useState({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" });
+  // ==========================================================================
+  // CLIENT CHECK-IN - account-free. Identified by phone + a system-
+  // generated client_code shown once on screen, not by login.
+  // ==========================================================================
+  const [ticketForm, setTicketForm] = useState(EMPTY_TICKET_FORM);
+  const [checkinPhone, setCheckinPhone] = useState("");
   const [severityLevel, setSeverityLevel] = useState(null);
   const [emergencyAck, setEmergencyAck] = useState(false);
   const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
   const [pendingTicketId, setPendingTicketId] = useState(null);
+  const [clientCode, setClientCode] = useState(null);
   const [showPay, setShowPay] = useState(false);
   const [momoDetails, setMomoDetails] = useState(null);
   const [momoDetailsError, setMomoDetailsError] = useState("");
@@ -192,41 +189,34 @@ export default function App() {
   const [momoBusy, setMomoBusy] = useState(false);
 
   async function submitCheckIn() {
-    if (!emergencyAck) {
-      notify("Please confirm you've read the emergency notice before continuing.", false); return;
-    }
-    if (!ticketForm.onset.trim() || !severityLevel) {
-      notify("Please fill in at least Onset and Severity.", false); return;
-    }
+    if (!emergencyAck) { notify("Please confirm you've read the emergency notice before continuing.", false); return; }
+    if (!checkinPhone.trim()) { notify("Please enter your phone number.", false); return; }
+    if (!ticketForm.onset.trim() || !severityLevel) { notify("Please fill in at least Onset and Severity.", false); return; }
+
     setTicketBusy(true);
-    const { data, error } = await supabase.from("tickets").insert({
-      client_id: user.id, ...ticketForm,
-      severity_level: severityLevel,
-      emergency_disclaimer_acknowledged: true,
-      payment_expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-    }).select("id").single();
-    setTicketBusy(false);
-    if (error) { notify("Could not submit: " + error.message, false); return; }
-    setPendingTicketId(data.id);
-    if (severityLevel >= EMERGENCY_THRESHOLD) {
-      // Urgent case: show the emergency warning prominently before payment,
-      // not just a quiet flag staff might not notice in time. This does not
-      // block them from continuing with Ticket-In - it makes sure they've
-      // also been told, clearly, that this may need emergency care now,
-      // not a queued consultation.
-      setShowEmergencyWarning(true);
-    } else {
-      setShowPay(true);
+    try {
+      const res = await fetch("/api/submit-checkin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: checkinPhone.trim(), ...ticketForm, severity_level: severityLevel, emergency_disclaimer_acknowledged: true }),
+      });
+      const body = await res.json();
+      setTicketBusy(false);
+      if (!res.ok) { notify(body.error || "Could not submit check-in.", false); return; }
+      setPendingTicketId(body.ticketId);
+      setClientCode(body.clientCode);
+      if (severityLevel >= EMERGENCY_THRESHOLD) setShowEmergencyWarning(true);
+      else setScreen("checkin-code");
+    } catch (e) {
+      setTicketBusy(false);
+      notify("Could not submit check-in: " + e.message, false);
     }
   }
 
   async function openPayment() {
     setMomoDetailsError("");
     if (momoDetails) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { setMomoDetailsError("Please sign in."); return; }
     try {
-      const res = await fetch("/api/get-momo-details", { method: "POST", headers: { Authorization: "Bearer " + session.access_token } });
+      const res = await fetch("/api/get-momo-details", { method: "POST" });
       const body = await res.json();
       if (!res.ok) { setMomoDetailsError(body.error || "Could not load payment details."); return; }
       setMomoDetails(body);
@@ -239,31 +229,62 @@ export default function App() {
     try { await navigator.clipboard.writeText(momoDetails.momoNumber); setMomoCopied(true); setTimeout(() => setMomoCopied(false), 2000); }
     catch { notify("Could not copy - long-press to copy manually.", false); }
   }
+  async function copyClientCode() {
+    if (!clientCode) return;
+    try { await navigator.clipboard.writeText(clientCode); notify("Code copied."); }
+    catch { notify("Could not copy - please write it down.", false); }
+  }
 
   async function submitPayment() {
     if (!momoRef.trim()) { notify("Please enter your transaction reference.", false); return; }
     setMomoBusy(true);
-    const { error } = await supabase.from("ticket_payments").insert({
-      ticket_id: pendingTicketId, client_id: user.id, amount: PLAN_AMOUNT,
-      payment_method: "manual_momo", reference_note: momoRef.trim(),
-    });
-    setMomoBusy(false);
-    if (error) { notify("Could not submit: " + error.message, false); return; }
-    notify("Payment submitted! We'll confirm shortly and your consultation will open.");
-    setShowPay(false); setMomoRef(""); setMomoDetails(null); setPendingTicketId(null);
-    setTicketForm({ onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" });
-    setSeverityLevel(null); setEmergencyAck(false);
-    setPage("mytickets"); loadMyTickets();
+    try {
+      const res = await fetch("/api/submit-checkin-payment", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId: pendingTicketId, phone: checkinPhone.trim(), code: clientCode, referenceNote: momoRef.trim() }),
+      });
+      const body = await res.json();
+      setMomoBusy(false);
+      if (!res.ok) { notify(body.error || "Could not submit payment.", false); return; }
+      notify("Payment submitted! We'll confirm shortly and your consultation will open.");
+      setShowPay(false); setMomoRef(""); setMomoDetails(null);
+      setScreen("landing");
+      setTicketForm(EMPTY_TICKET_FORM); setSeverityLevel(null); setEmergencyAck(false);
+      setPendingTicketId(null); setClientCode(null); setCheckinPhone("");
+    } catch (e) {
+      setMomoBusy(false);
+      notify("Could not submit payment: " + e.message, false);
+    }
   }
 
-  // -- CLIENT: MY TICKETS --
-  const [myTickets, setMyTickets] = useState([]);
-  async function loadMyTickets() {
-    const { data, error } = await supabase.from("tickets").select("*").eq("client_id", user.id).order("created_at", { ascending: false });
-    if (!error && data) setMyTickets(data);
+  // -- LOOKUP (account-free ticket status check) --
+  const [lookupPhone, setLookupPhone] = useState("");
+  const [lookupCode, setLookupCode] = useState("");
+  const [lookupResult, setLookupResult] = useState(null);
+  const [lookupError, setLookupError] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+
+  async function doLookup() {
+    if (!lookupPhone.trim() || !lookupCode.trim()) { setLookupError("Please enter both your phone number and code."); return; }
+    setLookupBusy(true); setLookupError(""); setLookupResult(null);
+    try {
+      const res = await fetch("/api/lookup-ticket", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: lookupPhone.trim(), code: lookupCode.trim() }),
+      });
+      const body = await res.json();
+      setLookupBusy(false);
+      if (!res.ok) { setLookupError(body.error || "Could not find that ticket."); return; }
+      setLookupResult(body.ticket);
+    } catch (e) {
+      setLookupBusy(false);
+      setLookupError("Could not check status: " + e.message);
+    }
   }
 
-  // -- STAFF: OPEN TICKETS + CLAIMED --
+  // ==========================================================================
+  // STAFF: OPEN TICKETS + CLAIMED
+  // ==========================================================================
   const [openTickets, setOpenTickets] = useState([]);
   const [myClaimed, setMyClaimed] = useState([]);
   async function loadStaffBoard() {
@@ -309,7 +330,9 @@ export default function App() {
     loadStaffBoard();
   }
 
-  // -- ADMIN --
+  // ==========================================================================
+  // ADMIN
+  // ==========================================================================
   const [pendingPayments, setPendingPayments] = useState([]);
   const [pendingStaff, setPendingStaff] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -381,7 +404,6 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    if (page === "mytickets" && isClient) loadMyTickets();
     if (page === "staffboard" && isStaff) loadStaffBoard();
     if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); }
     if (page === "users" && isAdmin) loadAllUsers();
@@ -396,32 +418,155 @@ export default function App() {
       <div style={{ background: C.navy, padding: "80px 24px", textAlign: "center", color: "#fff" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.teal, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 14 }}>Ticket-In</div>
         <h1 style={{ fontSize: 34, fontWeight: 800, marginBottom: 14, fontFamily: "Georgia,serif" }}>Don't know where to start? Start here.</h1>
-        <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", maxWidth: 460, margin: "0 auto 30px" }}>Check in, describe how you're feeling, and get matched with a qualified freelance healthcare professional.</p>
+        <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", maxWidth: 460, margin: "0 auto 30px" }}>Check in with just your phone number, describe how you're feeling, and get matched with a qualified freelance healthcare professional.</p>
         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-          <Btn label="Check In Now" primary onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("client"); }} />
-          <Btn label="I'm a Healthcare Professional" onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("staff"); }} />
+          <Btn label="Check In Now" primary onClick={() => setScreen("checkin")} />
+          <Btn label="Check My Ticket Status" onClick={() => setScreen("lookup")} />
+          <Btn label="I'm a Healthcare Professional" onClick={() => { setScreen("auth"); setIsReg(true); }} />
         </div>
       </div>
+    </div>
+  );
+
+  if (screen === "lookup") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
+        <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 14 }}>&larr; Back</button>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Check My Ticket</div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>Enter the phone number and code you were given at check-in.</p>
+        <Field label="Phone Number" value={lookupPhone} onChange={e => setLookupPhone(e.target.value)} required />
+        <Field label="Your Code" value={lookupCode} onChange={e => setLookupCode(e.target.value.toUpperCase())} placeholder="e.g. A7K92M" required />
+        {lookupError && <div style={{ background: C.redL, border: "1px solid " + C.redB, borderRadius: 10, padding: 12, marginBottom: 14, color: C.red, fontSize: 13 }}>{lookupError}</div>}
+        <Btn label={lookupBusy ? "Checking..." : "Check Status"} primary full loading={lookupBusy} onClick={doLookup} />
+
+        {lookupResult && (
+          <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid " + C.surf }}>
+            <Tag kind={lookupResult.status}>{lookupResult.status.replace("_", " ")}</Tag>
+            <div style={{ fontSize: 13, color: C.ink, marginTop: 8 }}>{lookupResult.onset}</div>
+            {lookupResult.status === "resolved" && lookupResult.resolution_summary && (
+              <div style={{ marginTop: 12, fontSize: 13, color: C.body, lineHeight: 1.6 }}>
+                <strong>Summary from your professional:</strong><br />{lookupResult.resolution_summary}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <Toast {...toast} />
+    </div>
+  );
+
+  if (screen === "checkin") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 14 }}>&larr; Back</button>
+        <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Check In</h1>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>No account needed. Tell us how you're feeling and how to reach you.</p>
+
+        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 6 }}>Not for emergencies</div>
+          <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6 }}>
+            Ticket-In is a consultation platform, not an emergency service. If you are experiencing a life-threatening emergency - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything you believe could be life-threatening - go to the nearest hospital or call emergency services immediately. Do not wait for a Ticket-In consultation.
+          </div>
+        </div>
+
+        <Field label="Phone Number" value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder="e.g. 6XX XXX XXX" required />
+
+        {OLDCART_FIELDS.map(([key, label, placeholder]) => (
+          <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
+        ))}
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+            Severity <span style={{ color: C.red }}>*</span>
+            <span style={{ fontWeight: 400, color: C.muted }}> (1 = very mild, 10 = worst imaginable)</span>
+          </label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+              <button key={n} onClick={() => setSeverityLevel(n)} style={{
+                width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontFamily: "system-ui", fontWeight: 700, fontSize: 13,
+                border: "1.5px solid " + (severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redB : C.tealB) : C.border),
+                background: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redL : C.tealL) : C.white,
+                color: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.red : C.teal) : C.body,
+              }}>{n}</button>
+            ))}
+          </div>
+          {severityLevel >= EMERGENCY_THRESHOLD && (
+            <div style={{ fontSize: 11, color: C.red, marginTop: 6, fontWeight: 700 }}>
+              This severity level may need urgent or emergency care - please read the notice above carefully.
+            </div>
+          )}
+        </div>
+        <Field label="Describe the severity in your own words (optional)" value={ticketForm.severity_description} onChange={e => setTicketForm(f => ({ ...f, severity_description: e.target.value }))} placeholder="e.g. sharp pain, hard to walk" />
+
+        <Field label="Anything else?" value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
+
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, fontSize: 12, color: C.body, cursor: "pointer" }}>
+          <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
+          I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.
+        </label>
+
+        <Btn label={ticketBusy ? "Submitting..." : "Submit and Continue"} primary full loading={ticketBusy} disabled={!emergencyAck} onClick={submitCheckIn} />
+      </div>
+      <Toast {...toast} />
+
+      <Modal open={showEmergencyWarning} onClose={() => {}} title="Please Read This First">
+        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>
+            You reported a severity of <strong>{severityLevel}/10</strong>. If what you're experiencing feels life-threatening - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything similarly urgent - <strong>please go to the nearest hospital or call emergency services now</strong>, rather than waiting for a Ticket-In consultation.
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          Your ticket has been marked urgent and will be shown to staff as a priority. If you believe this can safely wait for a consultation, you can continue below.
+        </p>
+        <Btn label="I understand, continue" primary full onClick={() => { setShowEmergencyWarning(false); setScreen("checkin-code"); }} />
+      </Modal>
+    </div>
+  );
+
+  if (screen === "checkin-code") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 420, width: "100%", textAlign: "center" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>Check-In Submitted</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Your code - save this, you'll need it to check your status:</div>
+        <button onClick={copyClientCode} style={{
+          fontSize: 32, fontWeight: 900, color: C.navy, letterSpacing: ".08em", background: C.tealL,
+          border: "1.5px dashed " + C.tealB, borderRadius: 12, padding: "16px 20px", marginBottom: 6, cursor: "pointer", fontFamily: "system-ui", width: "100%",
+        }}>{clientCode}</button>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 22 }}>Tap to copy - along with your phone number, this is how you'll check your ticket later.</div>
+        <Btn label="Continue to Payment" primary full onClick={() => setShowPay(true)} />
+      </div>
+      <Toast {...toast} />
+
+      <Modal open={showPay} onClose={() => setShowPay(false)} title="Complete Payment">
+        <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: C.muted }}>SEND EXACTLY</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: C.gold }}>{PLAN_AMOUNT.toLocaleString()} XAF</div>
+        </div>
+        {momoDetailsError ? (
+          <div style={{ background: C.redL, border: "1px solid " + C.redB, borderRadius: 10, padding: 14, marginBottom: 16, color: C.red, fontSize: 13 }}>{momoDetailsError}</div>
+        ) : !momoDetails ? (
+          <div style={{ textAlign: "center", padding: 24, color: C.muted, fontSize: 13 }}>Loading payment details...</div>
+        ) : (
+          <button onClick={copyMomoNumber} style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: C.surf, border: "1.5px dashed " + C.border, borderRadius: 10, padding: 12, marginBottom: 12, cursor: "pointer", fontFamily: "system-ui" }}>
+            <span style={{ fontSize: 11, color: C.muted }}>{momoCopied ? "Copied - now send via MoMo" : "Tap to copy MoMo number"}</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{momoDetails.momoNumber}</span>
+            <span style={{ fontSize: 11, color: C.muted }}>{momoDetails.momoAccountName}</span>
+          </button>
+        )}
+        <Field label="Reference from confirmation SMS" value={momoRef} onChange={e => setMomoRef(e.target.value)} placeholder="e.g. MP240905.1234.A56789" required />
+        <Btn label={momoBusy ? "Submitting..." : "I've Sent the Payment"} primary full loading={momoBusy} disabled={!momoDetails || !momoRef.trim()} onClick={submitPayment} />
+      </Modal>
     </div>
   );
 
   if (screen === "auth") return (
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
-        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{isReg ? "Create Account" : "Sign In"}</div>
-        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{isReg ? "Join Ticket-In." : "Sign in to your account."}</p>
-        {isReg && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {["client", "staff"].map(r => (
-              <button key={r} onClick={() => setAuthRole(r)} style={{
-                flex: 1, padding: "9px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
-                background: authRole === r ? C.tealL : C.surf, border: "1.5px solid " + (authRole === r ? C.tealB : C.border), color: authRole === r ? C.teal : C.body,
-              }}>{r === "client" ? "I need care" : "I'm a professional"}</button>
-            ))}
-          </div>
-        )}
+        <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 14 }}>&larr; Back</button>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{isReg ? "Professional Sign Up" : "Sign In"}</div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{isReg ? "For verified healthcare staff and admin only." : "Sign in to your account."}</p>
         {isReg && <Field label="Full Name" value={authName} onChange={e => setAuthName(e.target.value)} required />}
-        {isReg && authRole === "staff" && (
+        {isReg && (
           <>
             <Field label="License / Registration Number" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required />
             <Field label="Issuing Institution" value={issuingInstitution} onChange={e => setIssuingInstitution(e.target.value)} required />
@@ -443,13 +588,14 @@ export default function App() {
     </div>
   );
 
-  // -- MAIN APP SHELL --
+  // -- MAIN APP SHELL (staff/admin only) --
+  if (!user) return null;
+
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex" }}>
       <div style={{ width: 220, background: C.white, borderRight: "1px solid " + C.border, padding: 20, flexShrink: 0 }}>
         <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 24, fontFamily: "Georgia,serif" }}>Ticket-In</div>
         {[
-          ...(isClient ? [{ id: "checkin", label: "Check In" }, { id: "mytickets", label: "My Tickets" }] : []),
           ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
           ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
           ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
@@ -468,78 +614,6 @@ export default function App() {
 
       <div style={{ flex: 1, padding: 32, maxWidth: 720 }}>
 
-        {page === "checkin" && isClient && (
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Check In</h1>
-            <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>Tell us how you're feeling. This information goes to the professional who takes your case.</p>
-
-            <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 6 }}>Not for emergencies</div>
-              <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6 }}>
-                Ticket-In is a consultation platform, not an emergency service. If you are experiencing a life-threatening emergency - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything you believe could be life-threatening - go to the nearest hospital or call emergency services immediately. Do not wait for a Ticket-In consultation.
-              </div>
-            </div>
-
-            {OLDCART_FIELDS.map(([key, label, placeholder]) => (
-              <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
-            ))}
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
-                Severity <span style={{ color: C.red }}>*</span>
-                <span style={{ fontWeight: 400, color: C.muted }}> (1 = very mild, 10 = worst imaginable)</span>
-              </label>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                  <button key={n} onClick={() => setSeverityLevel(n)} style={{
-                    width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontFamily: "system-ui", fontWeight: 700, fontSize: 13,
-                    border: "1.5px solid " + (severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redB : C.tealB) : C.border),
-                    background: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redL : C.tealL) : C.white,
-                    color: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.red : C.teal) : C.body,
-                  }}>{n}</button>
-                ))}
-              </div>
-              {severityLevel >= EMERGENCY_THRESHOLD && (
-                <div style={{ fontSize: 11, color: C.red, marginTop: 6, fontWeight: 700 }}>
-                  This severity level may need urgent or emergency care - please read the notice above carefully.
-                </div>
-              )}
-            </div>
-            <Field label="Describe the severity in your own words (optional)" value={ticketForm.severity_description} onChange={e => setTicketForm(f => ({ ...f, severity_description: e.target.value }))} placeholder="e.g. sharp pain, hard to walk" />
-
-            <Field label="Anything else?" value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
-
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, fontSize: 12, color: C.body, cursor: "pointer" }}>
-              <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
-              I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.
-            </label>
-
-            <Btn label={ticketBusy ? "Submitting..." : "Submit and Continue to Payment"} primary full loading={ticketBusy} disabled={!emergencyAck} onClick={submitCheckIn} />
-          </div>
-        )}
-
-        {page === "mytickets" && isClient && (
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>My Tickets</h1>
-            {myTickets.length === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 30 }}>No tickets yet.</div>}
-            {myTickets.map(t => (
-              <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
-                  <span style={{ fontSize: 11, color: C.muted }}>{new Date(t.created_at).toLocaleDateString()}</span>
-                </div>
-                <div style={{ fontSize: 13, color: C.body }}>{t.onset}</div>
-                {t.status === "resolved" && t.resolution_summary && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid " + C.surf, fontSize: 13, color: C.ink }}>
-                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Summary from your professional:</div>
-                    {t.resolution_summary}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
         {page === "staffboard" && isStaff && (
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Ticket Board</h1>
@@ -556,9 +630,10 @@ export default function App() {
               }}>
                 {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
                 <div style={{ fontSize: 13, color: C.ink, marginTop: 6, marginBottom: 4 }}><strong>Onset:</strong> {t.onset}</div>
-                <div style={{ fontSize: 13, color: C.body, marginBottom: 10 }}>
+                <div style={{ fontSize: 13, color: C.body, marginBottom: 4 }}>
                   <strong>Severity:</strong> {t.severity_level}/10{t.severity_description ? " - " + t.severity_description : ""}
                 </div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Contact: {t.client_phone}</div>
                 <Btn label="Claim Ticket" primary small onClick={() => claimTicket(t.id)} disabled={user.staff_verification_status !== "verified"} />
               </div>
             ))}
@@ -569,7 +644,8 @@ export default function App() {
                   <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
                   {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
                 </div>
-                <div style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>{t.onset}</div>
+                <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{t.onset}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Contact: {t.client_phone}</div>
                 {t.status === "claimed" && <Btn label="Start Consultation" primary small onClick={() => startConsultation(t.id)} />}
                 {t.status === "in_progress" && <Btn label="Resolve & Add Notes" primary small onClick={() => setResolvingTicket(t.id)} />}
               </div>
@@ -659,7 +735,7 @@ export default function App() {
                   )
                 )}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {["client", "staff", "admin"].map(r => r !== u.role && (
+                  {["staff", "admin"].map(r => r !== u.role && (
                     <Btn key={r} label={"Set " + r} small onClick={() => changeUserRole(u.id, r)} />
                   ))}
                   {u.role === "staff" && u.staff_verification_status !== "verified" && (
@@ -674,38 +750,6 @@ export default function App() {
           </div>
         )}
       </div>
-
-      <Modal open={showEmergencyWarning} onClose={() => {}} title="Please Read This First">
-        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>
-            You reported a severity of <strong>{severityLevel}/10</strong>. If what you're experiencing feels life-threatening - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything similarly urgent - <strong>please go to the nearest hospital or call emergency services now</strong>, rather than waiting for a Ticket-In consultation.
-          </div>
-        </div>
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-          Your ticket has been marked urgent and will be shown to staff as a priority. If you believe this can safely wait for a consultation, you can continue below.
-        </p>
-        <Btn label="I understand, continue to payment" primary full onClick={() => { setShowEmergencyWarning(false); setShowPay(true); }} />
-      </Modal>
-
-      <Modal open={showPay} onClose={() => setShowPay(false)} title="Complete Payment">
-        <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: C.muted }}>SEND EXACTLY</div>
-          <div style={{ fontSize: 26, fontWeight: 900, color: C.gold }}>{PLAN_AMOUNT.toLocaleString()} XAF</div>
-        </div>
-        {momoDetailsError ? (
-          <div style={{ background: C.redL, border: "1px solid " + C.redB, borderRadius: 10, padding: 14, marginBottom: 16, color: C.red, fontSize: 13 }}>{momoDetailsError}</div>
-        ) : !momoDetails ? (
-          <div style={{ textAlign: "center", padding: 24, color: C.muted, fontSize: 13 }}>Loading payment details...</div>
-        ) : (
-          <button onClick={copyMomoNumber} style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: C.surf, border: "1.5px dashed " + C.border, borderRadius: 10, padding: 12, marginBottom: 12, cursor: "pointer", fontFamily: "system-ui" }}>
-            <span style={{ fontSize: 11, color: C.muted }}>{momoCopied ? "Copied - now send via MoMo" : "Tap to copy MoMo number"}</span>
-            <span style={{ fontSize: 17, fontWeight: 800 }}>{momoDetails.momoNumber}</span>
-            <span style={{ fontSize: 11, color: C.muted }}>{momoDetails.momoAccountName}</span>
-          </button>
-        )}
-        <Field label="Reference from confirmation SMS" value={momoRef} onChange={e => setMomoRef(e.target.value)} placeholder="e.g. MP240905.1234.A56789" required />
-        <Btn label={momoBusy ? "Submitting..." : "I've Sent the Payment"} primary full loading={momoBusy} disabled={!momoDetails || !momoRef.trim()} onClick={submitPayment} />
-      </Modal>
 
       <Modal open={!!resolvingTicket} onClose={() => setResolvingTicket(null)} title="Resolve Ticket">
         <Field label="Objective Assessment" value={resolveNotes.objective_assessment} onChange={e => setResolveNotes(n => ({ ...n, objective_assessment: e.target.value }))} rows={2} />

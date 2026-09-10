@@ -1,17 +1,15 @@
-import { getAuthedUser } from "./_lib.js";
-
 // POST /api/get-momo-details
-// Auth required. Serves manual payment details from server-side env vars,
-// never hardcoded in source - PastQ had a real personal-phone-number
-// exposure bug from doing this the wrong way first; doing it right from
-// the start here instead.
+// No auth required (as of the account-free client check-in change) -
+// anonymous clients need this at the payment step now, and there's no
+// real sensitivity difference in who sees this vs. who doesn't; it's
+// shown to whoever is actively checking in regardless. Serves manual
+// payment details from server-side env vars, never hardcoded in source -
+// PastQ had a real personal-phone-number exposure bug from doing this
+// the wrong way first; doing it right from the start here instead.
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { user, error: authErr } = await getAuthedUser(req);
-    if (!user) return res.status(401).json({ error: authErr });
-
     const momoNumber = process.env.MOMO_NUMBER;
     const momoAccountName = process.env.MOMO_ACCOUNT_NAME;
 
