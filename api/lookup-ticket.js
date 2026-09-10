@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "./_lib.js";
+import { getSupabaseAdmin, getClientIp, checkRateLimit } from "./_lib.js";
 
 // POST /api/lookup-ticket
 // No auth - phone + client_code together act as the lookup credential.
@@ -6,6 +6,11 @@ import { getSupabaseAdmin } from "./_lib.js";
 // admin/staff-only table, untouched by this endpoint) - only the
 // ticket's own status and the plain-language resolution_summary
 // staff write specifically for the client to read.
+//
+// Rate limited tightly by IP - this is specifically the endpoint that
+// matters most for brute-force resistance (guessing a code against a
+// known/guessed phone number), so the limit here is stricter than the
+// others.
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -14,6 +19,10 @@ export default async function handler(req, res) {
     if (!phone || !code) return res.status(400).json({ error: "Phone number and code are required." });
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    const ok = await checkRateLimit(supabaseAdmin, getClientIp(req), "lookup-ticket", 15, 15);
+    if (!ok) return res.status(429).json({ error: "Too many attempts. Please wait a few minutes before trying again." });
+
     const { data, error } = await supabaseAdmin
       .from("tickets")
       .select("id, status, onset, created_at, resolution_summary, resolved_at")

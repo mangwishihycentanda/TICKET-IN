@@ -1,4 +1,4 @@
-import { getAuthedUser, getSupabaseAdmin } from "./_lib.js";
+import { getAuthedUser, getSupabaseAdmin, sendAdminAlert } from "./_lib.js";
 
 // POST /api/confirm-payment
 // body: { paymentId: string }
@@ -41,9 +41,15 @@ export default async function handler(req, res) {
       .eq("status", "form_submitted");   // atomic guard - only opens a ticket still awaiting payment
 
     if (ticketErr) {
-      // Payment is already marked completed at this point - report this
-      // clearly rather than silently leaving an inconsistent state, same
-      // failure mode PastQ had.
+      // Payment is already marked completed at this point - this is
+      // exactly the silent-inconsistency failure mode alerting exists
+      // for. Fire an alert immediately rather than waiting for someone
+      // to notice a client whose payment went through but whose ticket
+      // never opened.
+      await sendAdminAlert(
+        "Payment confirmed but ticket could not open - needs manual review",
+        "paymentId=" + paymentId + " ticketId=" + payment.ticket_id + " error=" + ticketErr.message
+      );
       return res.status(500).json({
         error: "Payment confirmed, but the ticket could not be opened: " + ticketErr.message + ". This needs manual review.",
       });
@@ -51,6 +57,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, ticketId: payment.ticket_id });
   } catch (e) {
+    await sendAdminAlert("confirm-payment crashed", e.message || String(e));
     return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
 }

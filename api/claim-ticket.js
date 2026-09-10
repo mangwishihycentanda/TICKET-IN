@@ -1,4 +1,4 @@
-import { getAuthedUser, getSupabaseAdmin } from "./_lib.js";
+import { getAuthedUser, getSupabaseAdmin, sendAdminAlert } from "./_lib.js";
 
 // POST /api/claim-ticket
 // body: { ticketId: string }
@@ -47,6 +47,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, ticketId: data.id });
   } catch (e) {
+    await sendAdminAlert("claim-ticket crashed", e.message || String(e));
     return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
 }

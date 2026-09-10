@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "./_lib.js";
+import { getSupabaseAdmin, getClientIp, checkRateLimit, sendAdminAlert } from "./_lib.js";
 
 // POST /api/submit-checkin-payment
 // No auth - but re-verifies the ticket actually belongs to this
@@ -13,6 +13,9 @@ export default async function handler(req, res) {
     if (!referenceNote || !referenceNote.trim()) return res.status(400).json({ error: "Transaction reference is required." });
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    const ok = await checkRateLimit(supabaseAdmin, getClientIp(req), "submit-checkin-payment", 10, 60);
+    if (!ok) return res.status(429).json({ error: "Too many attempts. Please wait a while before trying again." });
 
     const { data: ticket, error: ticketErr } = await supabaseAdmin
       .from("tickets")
@@ -32,10 +35,14 @@ export default async function handler(req, res) {
       status: "pending",
     });
 
-    if (payErr) return res.status(500).json({ error: "Could not submit payment: " + payErr.message });
+    if (payErr) {
+      await sendAdminAlert("Payment submission failed", "ticketId=" + ticketId + " error=" + payErr.message);
+      return res.status(500).json({ error: "Could not submit payment: " + payErr.message });
+    }
 
     return res.status(200).json({ ok: true });
   } catch (e) {
+    await sendAdminAlert("submit-checkin-payment crashed", e.message || String(e));
     return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
 }

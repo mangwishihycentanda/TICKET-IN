@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "./_lib.js";
+import { getSupabaseAdmin, getClientIp, checkRateLimit, sendAdminAlert } from "./_lib.js";
 
 // POST /api/submit-checkin
 // Deliberately NO authentication - this is the whole point. A client
@@ -8,6 +8,9 @@ import { getSupabaseAdmin } from "./_lib.js";
 // ticket later via /api/lookup-ticket. Not bank-grade security, but a
 // reasonable level for this - matches an order-lookup code, not a
 // password.
+//
+// Rate limited two ways: per-phone (catches one number spamming
+// check-ins) and per-IP (catches one source using many fake numbers).
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generateCode(length = 6) {
   let code = "";
@@ -44,6 +47,11 @@ export default async function handler(req, res) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
+    const phoneOk = await checkRateLimit(supabaseAdmin, phone.trim(), "submit-checkin", 5, 60);
+    if (!phoneOk) return res.status(429).json({ error: "Too many check-ins from this phone number. Please wait a while before trying again." });
+    const ipOk = await checkRateLimit(supabaseAdmin, getClientIp(req), "submit-checkin", 10, 60);
+    if (!ipOk) return res.status(429).json({ error: "Too many check-ins from this connection. Please wait a while before trying again." });
+
     // Retry a few times in the astronomically unlikely event of a code
     // collision (unique constraint would reject it) rather than failing
     // the whole check-in over it.
@@ -75,10 +83,14 @@ export default async function handler(req, res) {
       // else: code collision, loop and try a fresh one
     }
 
-    if (!ticket) return res.status(500).json({ error: "Could not submit check-in: " + (error?.message || "please try again") });
+    if (!ticket) {
+      await sendAdminAlert("Check-in submission failed", "phone=" + phone.trim() + " error=" + (error?.message || "unknown"));
+      return res.status(500).json({ error: "Could not submit check-in: " + (error?.message || "please try again") });
+    }
 
     return res.status(200).json({ ticketId: ticket.id, clientCode: ticket.client_code });
   } catch (e) {
+    await sendAdminAlert("submit-checkin crashed", e.message || String(e));
     return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
 }

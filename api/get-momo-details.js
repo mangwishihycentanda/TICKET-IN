@@ -1,3 +1,5 @@
+import { getSupabaseAdmin, getClientIp, checkRateLimit } from "./_lib.js";
+
 // POST /api/get-momo-details
 // No auth required (as of the account-free client check-in change) -
 // anonymous clients need this at the payment step now, and there's no
@@ -6,10 +8,18 @@
 // payment details from server-side env vars, never hardcoded in source -
 // PastQ had a real personal-phone-number exposure bug from doing this
 // the wrong way first; doing it right from the start here instead.
+//
+// Lightly rate limited - low stakes (the number itself isn't secret
+// once a real client sees it), mostly just a basic deterrent against
+// trivial scraping/abuse.
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+    const ok = await checkRateLimit(supabaseAdmin, getClientIp(req), "get-momo-details", 30, 60);
+    if (!ok) return res.status(429).json({ error: "Too many requests. Please wait a while before trying again." });
+
     const momoNumber = process.env.MOMO_NUMBER;
     const momoAccountName = process.env.MOMO_ACCOUNT_NAME;
 
