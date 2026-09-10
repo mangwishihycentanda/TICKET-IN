@@ -235,6 +235,7 @@ export default function App() {
 
   async function handleAuth() {
     if (!authEmail || !authPass) { notify("Email and password required.", false); return; }
+    if (isReg && authPass.length < 8) { notify("Password must be at least 8 characters.", false); return; }
     if (isReg && (!licenseNumber.trim() || !issuingInstitution.trim())) {
       notify("License number and issuing institution are required.", false); return;
     }
@@ -827,7 +828,7 @@ export default function App() {
           </>
         )}
         <Field label="Email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} type="email" required />
-        <Field label="Password" value={authPass} onChange={e => setAuthPass(e.target.value)} type="password" required />
+        <Field label={isReg ? "Password (at least 8 characters)" : "Password"} value={authPass} onChange={e => setAuthPass(e.target.value)} type="password" required />
         {isReg && (
           <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
             By creating an account you agree to our <span onClick={() => setScreen("terms")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Terms of Service</span> and <span onClick={() => setScreen("privacy")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>Privacy Policy</span>.
