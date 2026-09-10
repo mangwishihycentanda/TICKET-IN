@@ -74,9 +74,9 @@ const Modal = ({ open, onClose, title, children }) => !open ? null : (
 );
 
 const OLDCART_FIELDS = [
-  ["onset", "Onset", "When did this start?"],
+  ["onset", "Onset", "When did this first begin? (e.g. 3 days ago, this morning)"],
   ["location", "Location", "Where on the body?"],
-  ["duration", "Duration", "How long has it lasted?"],
+  ["duration", "Duration", "How long does it last each time? (e.g. a few minutes, all day, non-stop since it began)"],
   ["character", "Character", "What does it feel like?"],
   ["aggravating_factors", "Aggravating Factors", "What makes it worse?"],
   ["relieving_factors", "Relieving Factors", "What makes it better?"],
