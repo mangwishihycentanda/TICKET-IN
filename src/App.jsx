@@ -337,6 +337,19 @@ export default function App() {
   const [pendingStaff, setPendingStaff] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [ticketStats, setTicketStats] = useState(null);
+  const [phoneSearch, setPhoneSearch] = useState("");
+  const [phoneSearchResults, setPhoneSearchResults] = useState(null);
+  const [phoneSearchBusy, setPhoneSearchBusy] = useState(false);
+  async function searchByPhone() {
+    if (!phoneSearch.trim()) { notify("Enter a phone number to search.", false); return; }
+    setPhoneSearchBusy(true);
+    const { data, error } = await supabase.from("tickets").select("*")
+      .ilike("client_phone", "%" + phoneSearch.trim() + "%")
+      .order("created_at", { ascending: false });
+    setPhoneSearchBusy(false);
+    if (error) { notify("Search failed: " + error.message, false); return; }
+    setPhoneSearchResults(data || []);
+  }
   async function loadTicketStats() {
     const { data, error } = await supabase.from("tickets").select("status, severity_level");
     if (error) { notify("Could not load ticket stats: " + error.message, false); return; }
@@ -674,6 +687,32 @@ export default function App() {
                 ))}
               </div>
             )}
+
+            <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 26 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>Find a Ticket by Phone</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: phoneSearchResults ? 14 : 0 }}>
+                <input value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder="e.g. 6XX XXX XXX"
+                  onKeyDown={e => e.key === "Enter" && searchByPhone()}
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "1.5px solid " + C.border, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                <Btn label={phoneSearchBusy ? "..." : "Search"} primary small onClick={searchByPhone} />
+              </div>
+              {phoneSearchResults && (
+                phoneSearchResults.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.muted }}>No tickets found for that number.</div>
+                ) : (
+                  phoneSearchResults.map(t => (
+                    <div key={t.id} style={{ borderTop: "1px solid " + C.surf, paddingTop: 10, marginTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                        <span style={{ fontSize: 11, color: C.muted }}>{new Date(t.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.ink }}>{t.onset}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>Severity {t.severity_level}/10 - Code: {t.client_code} - {t.client_phone}</div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
 
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>Pending Payments ({pendingPayments.length})</div>
             {pendingPayments.map(p => (
