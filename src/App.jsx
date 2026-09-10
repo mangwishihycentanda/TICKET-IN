@@ -340,6 +340,19 @@ export default function App() {
   const [phoneSearch, setPhoneSearch] = useState("");
   const [phoneSearchResults, setPhoneSearchResults] = useState(null);
   const [phoneSearchBusy, setPhoneSearchBusy] = useState(false);
+  const [urgentTickets, setUrgentTickets] = useState([]);
+  async function loadUrgentTickets() {
+    // Every active (not resolved/expired) urgent ticket, regardless of
+    // payment status - payment being unconfirmed should never be the
+    // reason a potentially urgent case stays invisible to a human. This
+    // is admin-only by design (staff only ever see "open" tickets via
+    // the normal board, which already excludes unpaid ones on purpose).
+    const { data, error } = await supabase.from("tickets").select("*")
+      .gte("severity_level", EMERGENCY_THRESHOLD)
+      .not("status", "in", "(resolved,expired)")
+      .order("created_at", { ascending: true });
+    if (!error && data) setUrgentTickets(data);
+  }
   async function searchByPhone() {
     if (!phoneSearch.trim()) { notify("Enter a phone number to search.", false); return; }
     setPhoneSearchBusy(true);
@@ -418,7 +431,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     if (page === "staffboard" && isStaff) loadStaffBoard();
-    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); }
+    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); }
     if (page === "users" && isAdmin) loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, user]);
@@ -669,6 +682,27 @@ export default function App() {
         {page === "admin" && isAdmin && (
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>Admin</h1>
+
+            {urgentTickets.length > 0 && (
+              <div style={{ background: C.redL, border: "2px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 26 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.red, marginBottom: 4 }}>
+                  Needs Attention - Urgent ({urgentTickets.length})
+                </div>
+                <div style={{ fontSize: 11, color: C.body, marginBottom: 12 }}>
+                  Severity 8+ and not yet resolved, regardless of payment status - a payment problem should never be why a potentially urgent case goes unnoticed.
+                </div>
+                {urgentTickets.map(t => (
+                  <div key={t.id} style={{ background: C.white, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                      <span style={{ fontSize: 11, color: C.muted }}>{new Date(t.created_at).toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.ink }}>{t.onset}{t.severity_description ? " - " + t.severity_description : ""}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 2 }}>Severity {t.severity_level}/10 - Contact: {t.client_phone}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {ticketStats && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 26 }}>
