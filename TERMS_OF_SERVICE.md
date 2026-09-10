@@ -58,4 +58,4 @@ These Terms are governed by the laws of the Republic of Cameroon.
 
 ## 10. Contact
 
-Questions about these Terms: **[FILL IN — a real contact email or phone number]**
+Questions about these Terms: **mangwishihycentanda@gmail.com**

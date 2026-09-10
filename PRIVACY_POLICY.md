@@ -56,7 +56,7 @@ We have not yet set a formal data retention policy. Until we do, please assume y
 
 ## 7. Your rights
 
-Under Cameroonian law, you have rights over your personal data, including the right to know what we hold about you, to request correction of inaccurate information, and to request deletion. To exercise any of these rights, contact us at: **[FILL IN — a real contact email or phone number]**.
+Under Cameroonian law, you have rights over your personal data, including the right to know what we hold about you, to request correction of inaccurate information, and to request deletion. To exercise any of these rights, contact us at: **mangwishihycentanda@gmail.com**.
 
 ## 8. Payments
 
@@ -68,4 +68,4 @@ We will update this document as our practices change, and especially once formal
 
 ## 10. Contact
 
-Questions about this policy or your data: **[FILL IN — a real contact email or phone number]**
+Questions about this policy or your data: **mangwishihycentanda@gmail.com**

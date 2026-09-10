@@ -129,7 +129,7 @@ function PrivacyPolicyContent() {
 
       <Sec title="How long we keep it">We have not yet set a formal retention policy. Until we do, assume records are retained indefinitely - this is an open item toward full compliance.</Sec>
 
-      <Sec title="Your rights">You have the right to know what we hold about you, request correction, and request deletion. Contact: [not yet published].</Sec>
+      <Sec title="Your rights">You have the right to know what we hold about you, request correction, and request deletion. Contact: mangwishihycentanda@gmail.com.</Sec>
 
       <Sec title="Payments">We don't process mobile money automatically. You send money directly via mobile money, then tell us the reference - we never have access to your mobile money account, PIN, or balance.</Sec>
 
@@ -172,7 +172,7 @@ function TermsOfServiceContent() {
 
       <Sec title="Governing law">These Terms are governed by the laws of the Republic of Cameroon.</Sec>
 
-      <Sec title="Contact">Questions: [not yet published].</Sec>
+      <Sec title="Contact">Questions: mangwishihycentanda@gmail.com.</Sec>
     </div>
   );
 }
