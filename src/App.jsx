@@ -464,6 +464,41 @@ export default function App() {
     loadForum();
   }
 
+  // -- RESOURCES --
+  const [resources, setResources] = useState([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [newResTitle, setNewResTitle] = useState("");
+  const [newResCategory, setNewResCategory] = useState("");
+  const [newResDesc, setNewResDesc] = useState("");
+  const [newResLink, setNewResLink] = useState("");
+  const [newResText, setNewResText] = useState("");
+  const [showAddResource, setShowAddResource] = useState(false);
+
+  async function loadResources() {
+    setResourcesLoading(true);
+    const { data, error } = await supabase.from("resources").select("*").order("created_at", { ascending: false });
+    if (!error && data) setResources(data);
+    setResourcesLoading(false);
+  }
+  async function submitResource() {
+    if (!newResTitle.trim()) { notify("A title is required.", false); return; }
+    if (!newResLink.trim() && !newResText.trim()) { notify("Add a link, written content, or both.", false); return; }
+    const { error } = await supabase.from("resources").insert({
+      title: newResTitle.trim(), category: newResCategory.trim() || null, description: newResDesc.trim() || null,
+      link_url: newResLink.trim() || null, text_content: newResText.trim() || null, created_by: user.id,
+    });
+    if (error) { notify("Could not add resource: " + error.message, false); return; }
+    setNewResTitle(""); setNewResCategory(""); setNewResDesc(""); setNewResLink(""); setNewResText(""); setShowAddResource(false);
+    notify("Resource added.");
+    loadResources();
+  }
+  async function deleteResource(id) {
+    if (!confirm("Remove this resource?")) return;
+    const { error } = await supabase.from("resources").delete().eq("id", id);
+    if (error) { notify("Could not remove: " + error.message, false); return; }
+    loadResources();
+  }
+
   async function submitResolution() {
     if (!resolveSummary.trim()) { notify("Please write a summary for the client.", false); return; }
     const { error: noteErr } = await supabase.from("ticket_clinical_notes").insert({ ticket_id: resolvingTicket, staff_id: user.id, ...resolveNotes });
@@ -577,6 +612,7 @@ export default function App() {
     if (!user) return;
     if (page === "staffboard" && isStaff) loadStaffBoard();
     if (page === "forum" && (isStaff || isAdmin)) loadForum();
+    if (page === "resources" && (isStaff || isAdmin)) loadResources();
     if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); }
     if (page === "users" && isAdmin) loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -817,6 +853,7 @@ export default function App() {
         {[
           ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
           ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
+          ...(isStaff || isAdmin ? [{ id: "resources", label: "Resources" }] : []),
           ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
           ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
         ].map(({ id, label }) => (
@@ -948,6 +985,49 @@ export default function App() {
             )}
             {!forumLoading && forumPosts.filter(p => !p.parent_post_id && !p.is_deleted).length === 0 && (
               <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>No discussions yet - be the first to post.</div>
+            )}
+          </div>
+        )}
+
+        {page === "resources" && (isStaff || isAdmin) && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <h1 style={{ fontSize: 20, fontWeight: 800 }}>Resources</h1>
+              {isAdmin && <Btn label={showAddResource ? "Cancel" : "Add Resource"} small onClick={() => setShowAddResource(s => !s)} />}
+            </div>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Reference guidelines, protocols, and notes for staff.</p>
+
+            {showAddResource && isAdmin && (
+              <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 20 }}>
+                <Field label="Title" value={newResTitle} onChange={e => setNewResTitle(e.target.value)} placeholder="e.g. WHO Triage Guidelines" />
+                <Field label="Category (optional)" value={newResCategory} onChange={e => setNewResCategory(e.target.value)} placeholder="e.g. Triage, Referral" />
+                <Field label="Description (optional)" value={newResDesc} onChange={e => setNewResDesc(e.target.value)} rows={2} />
+                <Field label="Link (optional)" value={newResLink} onChange={e => setNewResLink(e.target.value)} placeholder="https://..." />
+                <Field label="Written content (optional)" value={newResText} onChange={e => setNewResText(e.target.value)} rows={4} placeholder="Notes, a protocol, or guidance written directly here..." />
+                <Btn label="Save Resource" primary full onClick={submitResource} />
+              </div>
+            )}
+
+            {resourcesLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>Loading...</div>
+            ) : (
+              resources.map(r => (
+                <div key={r.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                    <div>
+                      {r.category && <Tag kind="pending">{r.category}</Tag>}
+                      <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>{r.title}</div>
+                    </div>
+                    {isAdmin && <button onClick={() => deleteResource(r.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", fontFamily: "system-ui" }}>Remove</button>}
+                  </div>
+                  {r.description && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{r.description}</div>}
+                  {r.text_content && <div style={{ fontSize: 13, color: C.body, lineHeight: 1.6, marginTop: 10, whiteSpace: "pre-wrap" }}>{r.text_content}</div>}
+                  {r.link_url && <a href={r.link_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, fontSize: 12, color: C.teal, fontWeight: 700 }}>Open Link &rarr;</a>}
+                </div>
+              ))
+            )}
+            {!resourcesLoading && resources.length === 0 && (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>No resources yet.</div>
             )}
           </div>
         )}
