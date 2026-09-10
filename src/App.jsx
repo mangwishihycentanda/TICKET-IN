@@ -556,7 +556,7 @@ export default function App() {
   if (screen === "privacy" || screen === "terms") return (
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, padding: "24px 20px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto", background: C.white, borderRadius: 16, padding: 28 }}>
-        <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 18 }}>&larr; Back</button>
+        <button onClick={() => setScreen(user ? "app" : "landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 18 }}>&larr; Back</button>
         {screen === "privacy" ? <PrivacyPolicyContent /> : <TermsOfServiceContent />}
       </div>
     </div>
@@ -751,6 +751,10 @@ export default function App() {
           <div style={{ fontSize: 12, fontWeight: 700 }}>{user.name}</div>
           <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase" }}>{user.role}</div>
           <button onClick={logout} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", padding: 0, marginTop: 6, fontFamily: "system-ui" }}>Sign Out</button>
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+            <span onClick={() => setScreen("privacy")} style={{ color: C.muted, fontSize: 10, cursor: "pointer" }}>Privacy Policy</span>
+            <span onClick={() => setScreen("terms")} style={{ color: C.muted, fontSize: 10, cursor: "pointer" }}>Terms of Service</span>
+          </div>
         </div>
       </div>
 
