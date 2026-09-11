@@ -849,8 +849,8 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex" }}>
-      <div style={{ width: 220, background: C.white, borderRight: "1px solid " + C.border, padding: 20, flexShrink: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginBottom: 24, fontFamily: "Georgia,serif" }}>Ticket-In</div>
+      <div style={{ width: 210, background: C.white, borderRight: "1px solid " + C.border, padding: "18px 16px", flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 16, fontFamily: "Georgia,serif" }}>Ticket-In</div>
         {[
           ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
           ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
@@ -859,17 +859,18 @@ export default function App() {
           ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
         ].map(({ id, label }) => (
           <button key={id} onClick={() => setPage(id)} style={{
-            width: "100%", padding: "9px 11px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 9,
-            color: page === id ? C.teal : C.body, display: "block", fontSize: 13, fontWeight: page === id ? 700 : 500, marginBottom: 3, cursor: "pointer", textAlign: "left", fontFamily: "system-ui",
+            width: "100%", padding: "7px 10px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 8,
+            color: page === id ? C.teal : C.body, display: "block", fontSize: 13, fontWeight: page === id ? 700 : 500, marginBottom: 1, cursor: "pointer", textAlign: "left", fontFamily: "system-ui",
           }}>{label}</button>
         ))}
-        <div style={{ marginTop: 24, paddingTop: 14, borderTop: "1px solid " + C.surf }}>
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid " + C.surf }}>
           <div style={{ fontSize: 12, fontWeight: 700 }}>{user.name}</div>
           <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase" }}>{user.role}</div>
-          <button onClick={logout} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", padding: 0, marginTop: 6, fontFamily: "system-ui" }}>Sign Out</button>
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
-            <span onClick={() => setScreen("privacy")} style={{ color: C.muted, fontSize: 10, cursor: "pointer" }}>Privacy Policy</span>
-            <span onClick={() => setScreen("terms")} style={{ color: C.muted, fontSize: 10, cursor: "pointer" }}>Terms of Service</span>
+          <button onClick={logout} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", padding: 0, marginTop: 5, fontFamily: "system-ui" }}>Sign Out</button>
+          <div style={{ marginTop: 10, fontSize: 10, color: C.muted }}>
+            <span onClick={() => setScreen("privacy")} style={{ cursor: "pointer" }}>Privacy</span>
+            {" \u00b7 "}
+            <span onClick={() => setScreen("terms")} style={{ cursor: "pointer" }}>Terms</span>
           </div>
         </div>
       </div>
