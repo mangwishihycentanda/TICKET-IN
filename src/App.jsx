@@ -862,24 +862,42 @@ export default function App() {
   if (!user) return null;
 
   return (
-    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex" }}>
-      <div style={{ width: 168, background: C.white, borderRight: "1px solid " + C.border, padding: "16px 12px", flexShrink: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: C.navy, marginBottom: 14, fontFamily: "Georgia,serif" }}>Ticket-In</div>
-        {[
-          ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
-          ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
-          ...(isStaff || isAdmin ? [{ id: "resources", label: "Resources" }] : []),
-          ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
-          ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
-        ].map(({ id, label }) => (
-          <button key={id} onClick={() => setPage(id)} style={{
-            width: "100%", padding: "6px 8px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 7,
-            color: page === id ? C.teal : C.body, display: "block", fontSize: 12, fontWeight: page === id ? 700 : 500, marginBottom: 1, cursor: "pointer", textAlign: "left", fontFamily: "system-ui",
-          }}>{label}</button>
-        ))}
-        <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid " + C.surf }}>
-          <div style={{ fontSize: 11, fontWeight: 700 }}>{user.name}</div>
-          <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase" }}>{user.role}</div>
+    <div className="ti-shell" style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex" }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .ti-shell { flex-direction: column; }
+          .ti-sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid ${C.border};
+            padding: 10px 14px !important; display: flex !important; align-items: center; flex-wrap: wrap; gap: 10px; }
+          .ti-sidebar-title { margin-bottom: 0 !important; }
+          .ti-nav { display: flex !important; flex: 1; overflow-x: auto; gap: 4px; margin: 0 !important; }
+          .ti-nav button { width: auto !important; white-space: nowrap; margin-bottom: 0 !important; }
+          .ti-account { margin-top: 0 !important; padding-top: 0 !important; border-top: none !important;
+            display: flex !important; align-items: center; gap: 8px; white-space: nowrap; }
+          .ti-account-name { display: none !important; }
+          .ti-content { padding: 16px !important; }
+        }
+      `}</style>
+      <div className="ti-sidebar" style={{ width: 168, background: C.white, borderRight: "1px solid " + C.border, padding: "16px 12px", flexShrink: 0 }}>
+        <div className="ti-sidebar-title" style={{ fontSize: 14, fontWeight: 800, color: C.navy, marginBottom: 14, fontFamily: "Georgia,serif" }}>Ticket-In</div>
+        <div className="ti-nav">
+          {[
+            ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
+            ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
+            ...(isStaff || isAdmin ? [{ id: "resources", label: "Resources" }] : []),
+            ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
+            ...(isAdmin ? [{ id: "users", label: "Manage Users" }] : []),
+          ].map(({ id, label }) => (
+            <button key={id} onClick={() => setPage(id)} style={{
+              width: "100%", padding: "6px 8px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 7,
+              color: page === id ? C.teal : C.body, display: "block", fontSize: 12, fontWeight: page === id ? 700 : 500, marginBottom: 1, cursor: "pointer", textAlign: "left", fontFamily: "system-ui",
+            }}>{label}</button>
+          ))}
+        </div>
+        <div className="ti-account" style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid " + C.surf }}>
+          <div className="ti-account-name">
+            <div style={{ fontSize: 11, fontWeight: 700 }}>{user.name}</div>
+            <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase" }}>{user.role}</div>
+          </div>
           <button onClick={logout} style={{ background: "none", border: "none", color: C.red, fontSize: 10, cursor: "pointer", padding: 0, marginTop: 4, fontFamily: "system-ui" }}>Sign Out</button>
           <div style={{ marginTop: 8, fontSize: 9, color: C.muted }}>
             <span onClick={() => setScreen("privacy")} style={{ cursor: "pointer" }}>Privacy</span>
@@ -889,7 +907,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: 32, maxWidth: 720 }}>
+      <div className="ti-content" style={{ flex: 1, padding: 32, maxWidth: 720 }}>
 
         {page === "staffboard" && isStaff && (
           <div>
