@@ -90,6 +90,20 @@ const OLDCART_FIELDS = [
 // build-time dependency on reading a file - if you edit the wording,
 // update both this and the .md file to keep them in sync.
 // ============================================================================
+// Human-readable elapsed time since a ticket was submitted - lets staff
+// see at a glance which tickets have been waiting longest, without
+// having to read and mentally subtract a timestamp.
+function timeAgo(dateString) {
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + "m ago";
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + "h " + (mins % 60) + "m ago";
+  const days = Math.floor(hours / 24);
+  return days + "d " + (hours % 24) + "h ago";
+}
+
 const Sec = ({ title, children }) => (
   <div style={{ marginBottom: 18 }}>
     {title && <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginBottom: 6 }}>{title}</div>}
@@ -886,13 +900,21 @@ export default function App() {
               </div>
             )}
             <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>Open Tickets ({openTickets.length})</div>
-            {openTickets.slice().sort((a, b) => (b.severity_level || 0) - (a.severity_level || 0)).map(t => (
+            {openTickets.slice().sort((a, b) => (b.severity_level || 0) - (a.severity_level || 0)).map(t => {
+              const waitMins = (Date.now() - new Date(t.created_at).getTime()) / 60000;
+              const waitColor = waitMins >= 240 ? C.red : waitMins >= 60 ? C.gold : C.muted;
+              return (
               <div key={t.id} style={{
                 background: C.white, borderRadius: 12, padding: 16, marginBottom: 10,
                 border: t.severity_level >= EMERGENCY_THRESHOLD ? "2px solid " + C.redB : "1px solid " + C.border,
               }}>
-                {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
-                {t.is_minor && <Tag kind="pending">Minor - Guardian on File</Tag>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                    {t.is_minor && <Tag kind="pending">Minor - Guardian on File</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: waitColor }}>Waiting {timeAgo(t.created_at)}</span>
+                </div>
                 <div style={{ fontSize: 13, color: C.ink, marginTop: 6, marginBottom: 4 }}><strong>Onset:</strong> {t.onset}</div>
                 <div style={{ fontSize: 13, color: C.body, marginBottom: 4 }}>
                   <strong>Severity:</strong> {t.severity_level}/10{t.severity_description ? " - " + t.severity_description : ""}
@@ -901,14 +923,18 @@ export default function App() {
                 {t.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Guardian: {t.guardian_name} - {t.guardian_phone}</div>}
                 <Btn label="Claim Ticket" primary small onClick={() => claimTicket(t.id)} disabled={user.staff_verification_status !== "verified"} />
               </div>
-            ))}
+              );
+            })}
             <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>My Claimed Tickets ({myClaimed.length})</div>
             {myClaimed.map(t => (
               <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
-                  {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
-                  {t.is_minor && <Tag kind="pending">Minor</Tag>}
+                  <div>
+                    <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                    {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                    {t.is_minor && <Tag kind="pending">Minor</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.muted }}>Submitted {timeAgo(t.created_at)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{t.onset}</div>
                 <div style={{ fontSize: 12, color: C.muted, marginBottom: t.is_minor ? 2 : 10 }}>Contact: {t.client_phone}</div>
@@ -1050,7 +1076,7 @@ export default function App() {
                   <div key={t.id} style={{ background: C.white, borderRadius: 10, padding: 12, marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
-                      <span style={{ fontSize: 11, color: C.muted }}>{new Date(t.created_at).toLocaleString()}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: C.red }}>{timeAgo(t.created_at)}</span>
                     </div>
                     <div style={{ fontSize: 12, color: C.ink }}>{t.onset}{t.severity_description ? " - " + t.severity_description : ""}</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 2 }}>Severity {t.severity_level}/10 - Contact: {t.client_phone}</div>
