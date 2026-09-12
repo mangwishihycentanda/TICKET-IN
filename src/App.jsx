@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabaseClient.js";
 
 // ============================================================================
@@ -301,13 +301,26 @@ export default function App() {
   const [momoRef, setMomoRef] = useState("");
   const [momoBusy, setMomoBusy] = useState(false);
 
+  // Refs so a failed validation can scroll the user straight to the
+  // actual unanswered field, instead of just showing a toast that gives
+  // no indication of where on a long form the problem is.
+  const emergencyAckRef = useRef(null);
+  const phoneRef = useRef(null);
+  const onsetSeverityRef = useRef(null);
+  const ageRef = useRef(null);
+  const guardianRef = useRef(null);
+
+  function scrollToField(ref) {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function submitCheckIn() {
-    if (!emergencyAck) { notify("Please confirm you've read the emergency notice before continuing.", false); return; }
-    if (!checkinPhone.trim()) { notify("Please enter your phone number.", false); return; }
-    if (!ticketForm.onset.trim() || !severityLevel) { notify("Please fill in at least Onset and Severity.", false); return; }
-    if (isAdult === null) { notify("Please confirm whether you are 18 or older.", false); return; }
+    if (!emergencyAck) { notify("Please confirm you've read the emergency notice before continuing.", false); scrollToField(emergencyAckRef); return; }
+    if (!checkinPhone.trim()) { notify("Please enter your phone number.", false); scrollToField(phoneRef); return; }
+    if (!ticketForm.onset.trim() || !severityLevel) { notify("Please fill in at least Onset and Severity.", false); scrollToField(onsetSeverityRef); return; }
+    if (isAdult === null) { notify("Please confirm whether you are 18 or older.", false); scrollToField(ageRef); return; }
     if (isAdult === false && (!guardianName.trim() || !guardianPhone.trim())) {
-      notify("A parent or guardian's name and phone number are required.", false); return;
+      notify("A parent or guardian's name and phone number are required.", false); scrollToField(guardianRef); return;
     }
 
     setTicketBusy(true);
@@ -705,9 +718,11 @@ export default function App() {
           </div>
         </div>
 
-        <Field label="Phone Number" value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder="e.g. 6XX XXX XXX" required />
+        <div ref={phoneRef}>
+          <Field label="Phone Number" value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder="e.g. 6XX XXX XXX" required />
+        </div>
 
-        <div style={{ marginBottom: 14 }}>
+        <div ref={ageRef} style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
             Are you 18 or older? <span style={{ color: C.red }}>*</span>
           </label>
@@ -724,7 +739,7 @@ export default function App() {
         </div>
 
         {isAdult === false && (
-          <div style={{ background: C.tealL, border: "1.5px solid " + C.tealB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div ref={guardianRef} style={{ background: C.tealL, border: "1.5px solid " + C.tealB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
             <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6, marginBottom: 12 }}>
               Ticket-In requires a parent or guardian's details for anyone under 18. Please have them check in with you, or provide their information below.
             </div>
@@ -733,9 +748,11 @@ export default function App() {
           </div>
         )}
 
-        {OLDCART_FIELDS.map(([key, label, placeholder]) => (
-          <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
-        ))}
+        <div ref={onsetSeverityRef}>
+          {OLDCART_FIELDS.map(([key, label, placeholder]) => (
+            <Field key={key} label={label} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder} required={key === "onset"} />
+          ))}
+        </div>
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
@@ -762,7 +779,7 @@ export default function App() {
 
         <Field label="Anything else?" value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
 
-        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10, fontSize: 12, color: C.body, cursor: "pointer" }}>
+        <label ref={emergencyAckRef} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10, fontSize: 12, color: C.body, cursor: "pointer" }}>
           <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
           I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.
         </label>
