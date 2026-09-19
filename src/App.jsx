@@ -201,10 +201,15 @@ export default function App() {
   // "auth"/"app" are for staff/admin only - clients never log in at all.
   const [screen, setScreen] = useState("landing");
   const [isReg, setIsReg] = useState(true);
+  const [authRole, setAuthRole] = useState("staff"); // "staff" | "hospital" - which kind of account is being registered
   const [authName, setAuthName] = useState(""), [authEmail, setAuthEmail] = useState(""), [authPass, setAuthPass] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [issuingInstitution, setIssuingInstitution] = useState("");
   const [specialty, setSpecialty] = useState("");
+  const [hospitalName, setHospitalName] = useState("");
+  const [hospitalTown, setHospitalTown] = useState("");
+  const [hospitalPhone, setHospitalPhone] = useState("");
+  const [hospitalAddress, setHospitalAddress] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("staffboard");
@@ -217,6 +222,16 @@ export default function App() {
 
   const isStaff = user && user.role === "staff";
   const isAdmin = user && user.role === "admin";
+  const isHospital = user && user.role === "hospital";
+
+  // -- HOSPITALS - shared list, used by the client check-in dropdown and
+  // the staff sign-up's optional "affiliated hospital" picker. Public/
+  // anon-readable (RLS only returns hospitals whose account is verified).
+  const [hospitalsList, setHospitalsList] = useState([]);
+  async function loadHospitals() {
+    const { data } = await supabase.from("hospitals").select("id, name, town").order("town", { ascending: true });
+    if (data) setHospitalsList(data);
+  }
 
   // -- AUTH (staff/admin only) --
   useEffect(() => {
@@ -235,38 +250,54 @@ export default function App() {
 
   async function loadProfileIntoUser(authUser) {
     const { data: profile, error } = await supabase.from("profiles")
-      .select("name, role, staff_verification_status").eq("id", authUser.id).single();
+      .select("name, role, staff_verification_status, hospital_id").eq("id", authUser.id).single();
     if (error) {
       const name = authUser.email.split("@")[0];
       setUser({ id: authUser.id, name, role: "staff" });
       setPage("staffboard");
       return;
     }
-    setUser({ id: authUser.id, name: profile.name || authUser.email.split("@")[0], role: profile.role, staff_verification_status: profile.staff_verification_status });
+    setUser({ id: authUser.id, name: profile.name || authUser.email.split("@")[0], role: profile.role, staff_verification_status: profile.staff_verification_status, hospital_id: profile.hospital_id });
     if (profile.role === "admin") setPage("admin");
+    else if (profile.role === "hospital") setPage("hospital");
     else setPage("staffboard");
   }
 
   async function handleAuth() {
     if (!authEmail || !authPass) { notify("Email and password required.", false); return; }
     if (isReg && authPass.length < 8) { notify("Password must be at least 8 characters.", false); return; }
-    if (isReg && (!licenseNumber.trim() || !issuingInstitution.trim())) {
+    if (isReg && authRole === "staff" && (!licenseNumber.trim() || !issuingInstitution.trim())) {
       notify("License number and issuing institution are required.", false); return;
+    }
+    if (isReg && authRole === "hospital" && (!hospitalName.trim() || !hospitalTown.trim())) {
+      notify("Hospital name and town are required.", false); return;
     }
     setAuthBusy(true);
     if (isReg) {
       if (!authName.trim()) { setAuthBusy(false); notify("Name is required.", false); return; }
-      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName, role: "staff" } } });
+      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName } } });
       if (error) { setAuthBusy(false); notify(error.message, false); return; }
-      if (data.user) {
-        // Trigger always forces role='client' server-side regardless of what
-        // was sent above - staff is a one-time follow-up update.
-        await supabase.from("profiles").update({ role: "staff" }).eq("id", data.user.id);
-        const { error: credErr } = await supabase.from("staff_credentials").insert({
-          staff_id: data.user.id, license_number: licenseNumber.trim(),
-          issuing_institution: issuingInstitution.trim(), specialty: specialty.trim() || null,
+      if (data.session) {
+        // Finalization (setting role + saving credentials/hospital details)
+        // has to happen server-side via service_role - a client-side
+        // profiles.update({role}) looks like it succeeds but is silently
+        // reverted by the self-elevation-prevention trigger, since the
+        // caller here is the user themselves, not an admin or service_role.
+        const res = await fetch("/api/finalize-registration", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.session.access_token },
+          body: JSON.stringify(
+            authRole === "staff"
+              ? { role: "staff", licenseNumber: licenseNumber.trim(), issuingInstitution: issuingInstitution.trim(), specialty: specialty.trim() || null }
+              : { role: "hospital", hospitalName: hospitalName.trim(), hospitalTown: hospitalTown.trim(), hospitalPhone: hospitalPhone.trim() || null, hospitalAddress: hospitalAddress.trim() || null }
+          ),
         });
-        if (credErr) notify("Account created, but could not save credentials: " + credErr.message, false);
+        const body = await res.json();
+        if (!res.ok) { setAuthBusy(false); notify(body.error || "Account created, but registration could not be finalized.", false); return; }
+      } else {
+        setAuthBusy(false);
+        notify("Account created - please check your email to confirm, then sign in.");
+        return;
       }
       setAuthBusy(false);
       notify("Account created!");
@@ -285,6 +316,8 @@ export default function App() {
   // ==========================================================================
   const [ticketForm, setTicketForm] = useState(EMPTY_TICKET_FORM);
   const [checkinPhone, setCheckinPhone] = useState("");
+  const [consultType, setConsultType] = useState("remote"); // "remote" | "in_person"
+  const [selectedHospitalId, setSelectedHospitalId] = useState("");
   const [isAdult, setIsAdult] = useState(null); // null = not yet answered, true/false
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
@@ -309,6 +342,7 @@ export default function App() {
   const onsetSeverityRef = useRef(null);
   const ageRef = useRef(null);
   const guardianRef = useRef(null);
+  const hospitalRef = useRef(null);
 
   function scrollToField(ref) {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -322,6 +356,9 @@ export default function App() {
     if (isAdult === false && (!guardianName.trim() || !guardianPhone.trim())) {
       notify("A parent or guardian's name and phone number are required.", false); scrollToField(guardianRef); return;
     }
+    if (consultType === "in_person" && !selectedHospitalId) {
+      notify("Please choose a hospital.", false); scrollToField(hospitalRef); return;
+    }
 
     setTicketBusy(true);
     try {
@@ -330,6 +367,7 @@ export default function App() {
         body: JSON.stringify({
           phone: checkinPhone.trim(), ...ticketForm, severity_level: severityLevel, emergency_disclaimer_acknowledged: true,
           is_adult: isAdult, guardian_name: isAdult ? null : guardianName.trim(), guardian_phone: isAdult ? null : guardianPhone.trim(),
+          consult_type: consultType, hospital_id: consultType === "in_person" ? selectedHospitalId : null,
         }),
       });
       const body = await res.json();
@@ -384,6 +422,7 @@ export default function App() {
       setScreen("landing");
       setTicketForm(EMPTY_TICKET_FORM); setSeverityLevel(null); setEmergencyAck(false);
       setIsAdult(null); setGuardianName(""); setGuardianPhone("");
+      setConsultType("remote"); setSelectedHospitalId("");
       setPendingTicketId(null); setClientCode(null); setCheckinPhone("");
     } catch (e) {
       setMomoBusy(false);
@@ -543,6 +582,8 @@ export default function App() {
   // ==========================================================================
   const [pendingPayments, setPendingPayments] = useState([]);
   const [pendingStaff, setPendingStaff] = useState([]);
+  const [pendingHospitals, setPendingHospitals] = useState([]);
+  const [hospitalTicketIndex, setHospitalTicketIndex] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [ticketStats, setTicketStats] = useState(null);
   const [phoneSearch, setPhoneSearch] = useState("");
@@ -582,16 +623,30 @@ export default function App() {
     setTicketStats(counts);
   }
   async function loadAdmin() {
-    const [pays, staff, creds] = await Promise.all([
+    const [pays, staff, creds, hospitalAccounts, hospitalRows] = await Promise.all([
       supabase.from("ticket_payments").select("*").eq("status", "pending").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").eq("role", "staff").eq("staff_verification_status", "pending"),
       supabase.from("staff_credentials").select("*"),
+      supabase.from("profiles").select("*").eq("role", "hospital").eq("staff_verification_status", "pending"),
+      supabase.from("hospitals").select("*"),
     ]);
     if (pays.data) setPendingPayments(pays.data);
     if (staff.data) {
       const credsById = Object.fromEntries((creds.data || []).map(c => [c.staff_id, c]));
       setPendingStaff(staff.data.map(s => ({ ...s, credentials: credsById[s.id] })));
     }
+    if (hospitalAccounts.data) {
+      const hospitalByOwner = Object.fromEntries((hospitalRows.data || []).map(h => [h.created_by, h]));
+      setPendingHospitals(hospitalAccounts.data.map(h => ({ ...h, hospital: hospitalByOwner[h.id] })));
+    }
+  }
+  // Cross-hospital oversight index for admin - every in-person ticket,
+  // labeled with which hospital it was routed to. Complements each
+  // hospital's own single-hospital dashboard index below.
+  async function loadHospitalTicketIndex() {
+    const { data, error } = await supabase.from("tickets")
+      .select("*, hospitals(name, town)").eq("consult_type", "in_person").order("created_at", { ascending: false });
+    if (!error && data) setHospitalTicketIndex(data);
   }
   async function loadAllUsers() {
     const [usersRes, credsRes] = await Promise.all([
@@ -636,15 +691,71 @@ export default function App() {
     loadAdmin();
   }
 
+  // ==========================================================================
+  // HOSPITAL DASHBOARD
+  // ==========================================================================
+  const [myHospital, setMyHospital] = useState(null);
+  const [hospitalTickets, setHospitalTickets] = useState([]);
+  const [hospitalDoctors, setHospitalDoctors] = useState([]);
+  const [doctorEmailInput, setDoctorEmailInput] = useState("");
+  const [doctorAddBusy, setDoctorAddBusy] = useState(false);
+
+  async function loadHospitalBoard() {
+    const { data: hosp } = await supabase.from("hospitals").select("*").eq("created_by", user.id).single();
+    if (!hosp) return;
+    setMyHospital(hosp);
+    const [tix, docs] = await Promise.all([
+      supabase.from("tickets").select("*").eq("hospital_id", hosp.id).order("created_at", { ascending: false }),
+      supabase.from("profiles").select("*, staff_credentials(*)").eq("hospital_id", hosp.id).eq("role", "staff"),
+    ]);
+    if (tix.data) setHospitalTickets(tix.data);
+    if (docs.data) setHospitalDoctors(docs.data);
+  }
+
+  async function addDoctorByEmail() {
+    if (!doctorEmailInput.trim()) { notify("Enter the doctor's registered email.", false); return; }
+    setDoctorAddBusy(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/manage-hospital-doctor", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ action: "link", doctorEmail: doctorEmailInput.trim() }),
+    });
+    const body = await res.json();
+    setDoctorAddBusy(false);
+    if (!res.ok) { notify(body.error || "Could not add doctor.", false); return; }
+    notify(body.alreadyLinked ? "Already on your roster." : "Doctor added to your roster: " + body.name);
+    setDoctorEmailInput("");
+    loadHospitalBoard();
+  }
+
+  async function removeDoctor(doctorId) {
+    if (!confirm("Remove this doctor from your roster?")) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/manage-hospital-doctor", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ action: "unlink", doctorId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { notify(body.error || "Could not remove doctor.", false); return; }
+    notify("Doctor removed.");
+    loadHospitalBoard();
+  }
+
   useEffect(() => {
     if (!user) return;
     if (page === "staffboard" && isStaff) loadStaffBoard();
     if (page === "forum" && (isStaff || isAdmin)) loadForum();
     if (page === "resources" && (isStaff || isAdmin)) loadResources();
-    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); }
+    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); loadHospitalTicketIndex(); }
     if (page === "users" && isAdmin) loadAllUsers();
+    if (page === "hospital" && isHospital) loadHospitalBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, user]);
+
+  useEffect(() => {
+    if (screen === "checkin" || (screen === "auth" && isReg)) loadHospitals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, isReg]);
 
   // ==========================================================================
   // RENDER
@@ -658,7 +769,8 @@ export default function App() {
         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
           <Btn label="Check In Now" primary onClick={() => setScreen("checkin")} />
           <Btn label="Check My Ticket Status" onClick={() => setScreen("lookup")} />
-          <Btn label="I'm a Healthcare Professional" onClick={() => { setScreen("auth"); setIsReg(true); }} />
+          <Btn label="I'm a Healthcare Professional" onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("staff"); }} />
+          <Btn label="Register My Hospital" onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("hospital"); }} />
         </div>
       </div>
       <div style={{ padding: "18px 24px", textAlign: "center" }}>
@@ -721,6 +833,36 @@ export default function App() {
         <div ref={phoneRef}>
           <Field label="Phone Number" value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder="e.g. 6XX XXX XXX" required />
         </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>How would you like to be seen?</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setConsultType("remote"); setSelectedHospitalId(""); }} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: consultType === "remote" ? C.tealL : C.white, border: "1.5px solid " + (consultType === "remote" ? C.tealB : C.border), color: consultType === "remote" ? C.teal : C.body,
+            }}>Remote consultation</button>
+            <button onClick={() => setConsultType("in_person")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: consultType === "in_person" ? C.tealL : C.white, border: "1.5px solid " + (consultType === "in_person" ? C.tealB : C.border), color: consultType === "in_person" ? C.teal : C.body,
+            }}>In-person at a hospital</button>
+          </div>
+        </div>
+
+        {consultType === "in_person" && (
+          <div ref={hospitalRef} style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+              Choose a hospital <span style={{ color: C.red }}>*</span>
+            </label>
+            <select value={selectedHospitalId} onChange={e => setSelectedHospitalId(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", fontSize: 14, borderRadius: 9, border: "1.5px solid " + C.border, fontFamily: "system-ui", outline: "none", boxSizing: "border-box", background: C.white }}>
+              <option value="">Select a hospital...</option>
+              {hospitalsList.map(h => <option key={h.id} value={h.id}>{h.name} - {h.town}</option>)}
+            </select>
+            {hospitalsList.length === 0 && (
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>No hospitals are registered yet - please choose a remote consultation instead.</div>
+            )}
+          </div>
+        )}
 
         <div ref={ageRef} style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
@@ -845,16 +987,43 @@ export default function App() {
     <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
         <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 14 }}>&larr; Back</button>
-        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{isReg ? "Professional Sign Up" : "Sign In"}</div>
-        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{isReg ? "For verified healthcare staff and admin only." : "Sign in to your account."}</p>
-        {isReg && <Field label="Full Name" value={authName} onChange={e => setAuthName(e.target.value)} required />}
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>
+          {isReg ? (authRole === "hospital" ? "Hospital Sign Up" : "Professional Sign Up") : "Sign In"}
+        </div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>
+          {isReg ? (authRole === "hospital" ? "Register your hospital or clinic." : "For verified healthcare staff and admin only.") : "Sign in to your account."}
+        </p>
         {isReg && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <button onClick={() => setAuthRole("staff")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: authRole === "staff" ? C.tealL : C.white, border: "1.5px solid " + (authRole === "staff" ? C.tealB : C.border), color: authRole === "staff" ? C.teal : C.body,
+            }}>Healthcare Professional</button>
+            <button onClick={() => setAuthRole("hospital")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: authRole === "hospital" ? C.tealL : C.white, border: "1.5px solid " + (authRole === "hospital" ? C.tealB : C.border), color: authRole === "hospital" ? C.teal : C.body,
+            }}>Hospital</button>
+          </div>
+        )}
+        {isReg && <Field label={authRole === "hospital" ? "Your Name (hospital contact)" : "Full Name"} value={authName} onChange={e => setAuthName(e.target.value)} required />}
+        {isReg && authRole === "staff" && (
           <>
             <Field label="License / Registration Number" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required />
             <Field label="Issuing Institution" value={issuingInstitution} onChange={e => setIssuingInstitution(e.target.value)} required />
             <Field label="Specialty (optional)" value={specialty} onChange={e => setSpecialty(e.target.value)} />
             <p style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
-              An admin will review these before your account can claim tickets.
+              An admin will review these before your account can claim tickets. If you're affiliated with a hospital already registered here, that hospital can add you to its roster from its dashboard using this email.
+            </p>
+          </>
+        )}
+        {isReg && authRole === "hospital" && (
+          <>
+            <Field label="Hospital / Clinic Name" value={hospitalName} onChange={e => setHospitalName(e.target.value)} required />
+            <Field label="Town" value={hospitalTown} onChange={e => setHospitalTown(e.target.value)} required />
+            <Field label="Address (optional)" value={hospitalAddress} onChange={e => setHospitalAddress(e.target.value)} />
+            <Field label="Phone (optional)" value={hospitalPhone} onChange={e => setHospitalPhone(e.target.value)} />
+            <p style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+              An admin will review and verify your hospital before it appears in the client check-in list. Once verified, you can add doctors to your roster from your dashboard.
             </p>
           </>
         )}
@@ -899,6 +1068,7 @@ export default function App() {
         <div className="ti-nav">
           {[
             ...(isStaff ? [{ id: "staffboard", label: "Ticket Board" }] : []),
+            ...(isHospital ? [{ id: "hospital", label: "Hospital Dashboard" }] : []),
             ...(isStaff || isAdmin ? [{ id: "forum", label: "Forum" }] : []),
             ...(isStaff || isAdmin ? [{ id: "resources", label: "Resources" }] : []),
             ...(isAdmin ? [{ id: "admin", label: "Admin" }] : []),
@@ -976,6 +1146,58 @@ export default function App() {
                 {t.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Guardian: {t.guardian_name} - {t.guardian_phone}</div>}
                 {t.status === "claimed" && <Btn label="Start Consultation" primary small onClick={() => startConsultation(t.id)} />}
                 {t.status === "in_progress" && <Btn label="Resolve & Add Notes" primary small onClick={() => setResolvingTicket(t.id)} />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {page === "hospital" && isHospital && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{myHospital?.name || "Hospital Dashboard"}</h1>
+            {user.staff_verification_status !== "verified" && (
+              <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: C.body }}>
+                Your hospital is pending admin verification. It won't appear in the client check-in list, and no tickets will be routed to it, until then.
+              </div>
+            )}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>Doctor Roster ({hospitalDoctors.length})</div>
+            <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <Field label="Add a doctor by their registered email" value={doctorEmailInput} onChange={e => setDoctorEmailInput(e.target.value)} placeholder="doctor@email.com" />
+                </div>
+                <div style={{ paddingTop: 22 }}>
+                  <Btn label={doctorAddBusy ? "Adding..." : "Add"} primary loading={doctorAddBusy} onClick={addDoctorByEmail} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: -8 }}>They must already have a Ticket-In healthcare-professional account.</div>
+            </div>
+            {hospitalDoctors.map(d => (
+              <div key={d.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{d.name}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{d.staff_credentials?.specialty || d.staff_credentials?.issuing_institution || ""}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Tag kind={d.staff_verification_status === "verified" ? "verified" : "pending"}>{d.staff_verification_status}</Tag>
+                  <button onClick={() => removeDoctor(d.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "system-ui" }}>Remove</button>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>Tickets Sent to Your Hospital ({hospitalTickets.length})</div>
+            {hospitalTickets.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>No in-person tickets yet.</div>}
+            {hospitalTickets.map(t => (
+              <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                    {t.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">Urgent</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.muted }}>Submitted {timeAgo(t.created_at)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{t.onset}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Contact: {t.client_phone}</div>
               </div>
             ))}
           </div>
@@ -1191,6 +1413,40 @@ export default function App() {
                   <Btn label="Verify" primary small onClick={() => verifyStaff(s.id, "verified")} />
                   <Btn label="Reject" small onClick={() => verifyStaff(s.id, "rejected")} />
                 </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>Pending Hospital Verification ({pendingHospitals.length})</div>
+            {pendingHospitals.map(h => (
+              <div key={h.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{h.name}</div>
+                {h.hospital ? (
+                  <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                    <div><strong>Hospital:</strong> {h.hospital.name}</div>
+                    <div><strong>Town:</strong> {h.hospital.town}</div>
+                    {h.hospital.address && <div><strong>Address:</strong> {h.hospital.address}</div>}
+                    {h.hospital.phone && <div><strong>Phone:</strong> {h.hospital.phone}</div>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>No hospital record found - do not verify without checking why.</div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn label="Verify" primary small onClick={() => verifyStaff(h.id, "verified")} />
+                  <Btn label="Reject" small onClick={() => verifyStaff(h.id, "rejected")} />
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>In-Person Tickets by Hospital ({hospitalTicketIndex.length})</div>
+            {hospitalTicketIndex.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>No in-person tickets yet.</div>}
+            {hospitalTicketIndex.map(t => (
+              <div key={t.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <Tag kind={t.status}>{t.status.replace("_", " ")}</Tag>
+                  <span style={{ fontSize: 11, color: C.muted }}>{timeAgo(t.created_at)}</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{t.hospitals?.name || "Unknown hospital"} - {t.hospitals?.town}</div>
+                <div style={{ fontSize: 12, color: C.ink }}>{t.onset}</div>
               </div>
             ))}
           </div>
