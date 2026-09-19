@@ -25,7 +25,7 @@ export async function getAuthedUser(req) {
 
   const { data: profile, error: profileErr } = await supabaseAdmin
     .from("profiles")
-    .select("id, name, role, staff_verification_status")
+    .select("id, name, role, staff_verification_status, hospital_id")
     .eq("id", user.id)
     .single();
   if (profileErr || !profile) return { user: null, error: "No profile found for this account." };
@@ -91,3 +91,4 @@ export async function sendAdminAlert(subject, message) {
     console.error("[ADMIN ALERT - failed to send]", subject, "|", message, "|", e.message);
   }
 }
+
