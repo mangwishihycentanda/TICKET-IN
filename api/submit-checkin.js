@@ -27,7 +27,13 @@ export default async function handler(req, res) {
       relieving_factors, timing, severity_level, severity_description,
       additional_notes, emergency_disclaimer_acknowledged,
       is_adult, guardian_name, guardian_phone,
+      consult_type, hospital_id,
     } = req.body || {};
+
+    const consultType = consult_type === "in_person" ? "in_person" : "remote";
+    if (consult_type && !["remote", "in_person"].includes(consult_type)) {
+      return res.status(400).json({ error: "consult_type must be 'remote' or 'in_person'." });
+    }
 
     if (!phone || !phone.trim()) return res.status(400).json({ error: "Phone number is required." });
     if (!onset || !onset.trim()) return res.status(400).json({ error: "Onset is required." });
@@ -46,6 +52,23 @@ export default async function handler(req, res) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // in_person requires a real, currently-verified hospital - checked
+    // server-side against the DB, never trusted from the client. A stale
+    // or fabricated hospital_id (hospital since un-verified, or just
+    // made up) must not be able to create an orphaned ticket no doctor
+    // will ever see.
+    if (consultType === "in_person") {
+      if (!hospital_id) return res.status(400).json({ error: "Please choose a hospital for an in-person visit." });
+      const { data: hospital, error: hospErr } = await supabaseAdmin
+        .from("hospitals").select("id, created_by").eq("id", hospital_id).maybeSingle();
+      if (hospErr || !hospital) return res.status(400).json({ error: "That hospital could not be found. Please pick one from the list." });
+      const { data: hospProfile } = await supabaseAdmin
+        .from("profiles").select("staff_verification_status").eq("id", hospital.created_by).single();
+      if (hospProfile?.staff_verification_status !== "verified") {
+        return res.status(400).json({ error: "That hospital is not currently accepting check-ins. Please pick another." });
+      }
+    }
 
     const phoneOk = await checkRateLimit(supabaseAdmin, phone.trim(), "submit-checkin", 5, 60);
     if (!phoneOk) return res.status(429).json({ error: "Too many check-ins from this phone number. Please wait a while before trying again." });
@@ -75,6 +98,8 @@ export default async function handler(req, res) {
         is_minor: isMinor,
         guardian_name: isMinor ? guardian_name.trim() : null,
         guardian_phone: isMinor ? guardian_phone.trim() : null,
+        consult_type: consultType,
+        hospital_id: consultType === "in_person" ? hospital_id : null,
         payment_expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
       }).select("id, client_code").single();
 
