@@ -31,13 +31,33 @@ export default async function handler(req, res) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const { data, error } = await supabaseAdmin
+    // Hospital-scoping check, ahead of the atomic claim below: an
+    // in-person ticket only belongs to one hospital's queue - a doctor
+    // not on that hospital's roster (including a freelance doctor with
+    // no hospital_id at all) must never be able to claim it, even though
+    // RLS already narrows what they can SEE. This is the same "check it
+    // server-side too, don't rely on RLS alone" discipline the rest of
+    // this file already follows for the claim itself.
+    const { data: ticket, error: ticketErr } = await supabaseAdmin
+      .from("tickets").select("id, status, consult_type, hospital_id").eq("id", ticketId).single();
+    if (ticketErr || !ticket) return res.status(404).json({ error: "Ticket not found." });
+    if (ticket.consult_type === "in_person" && ticket.hospital_id !== user.hospital_id) {
+      return res.status(403).json({ error: "This ticket belongs to a different hospital's queue." });
+    }
+
+    // Belt-and-braces: re-affirm hospital scope inside the same atomic
+    // update, not just in the pre-check above. Postgres/PostgREST treat
+    // NULL specially, so a remote ticket (hospital_id is null) needs
+    // .is(), not .eq(null) - .eq() with a null value does not match rows.
+    let updateQuery = supabaseAdmin
       .from("tickets")
       .update({ status: "claimed", claimed_by: user.id, claimed_at: new Date().toISOString() })
       .eq("id", ticketId)
-      .eq("status", "open")   // <- the atomicity guarantee lives entirely in this line
-      .select("id")
-      .single();
+      .eq("status", "open");   // <- the atomicity guarantee lives entirely in this line
+    updateQuery = ticket.hospital_id
+      ? updateQuery.eq("hospital_id", ticket.hospital_id)
+      : updateQuery.is("hospital_id", null);
+    const { data, error } = await updateQuery.select("id").single();
 
     if (error || !data) {
       // Zero rows matched - someone else already claimed it, or it was
