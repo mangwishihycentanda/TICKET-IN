@@ -649,13 +649,15 @@ export default function App() {
     if (!error && data) setHospitalTicketIndex(data);
   }
   async function loadAllUsers() {
-    const [usersRes, credsRes] = await Promise.all([
+    const [usersRes, credsRes, hospitalsRes] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("staff_credentials").select("*"),
+      supabase.from("hospitals").select("*"),
     ]);
     if (usersRes.error) { notify("Could not load users: " + usersRes.error.message, false); return; }
     const credsById = Object.fromEntries((credsRes.data || []).map(c => [c.staff_id, c]));
-    if (usersRes.data) setAllUsers(usersRes.data.map(u => ({ ...u, credentials: credsById[u.id] })));
+    const hospitalByOwner = Object.fromEntries((hospitalsRes.data || []).map(h => [h.created_by, h]));
+    if (usersRes.data) setAllUsers(usersRes.data.map(u => ({ ...u, credentials: credsById[u.id], hospital: hospitalByOwner[u.id] })));
   }
   async function changeUserRole(userId, newRole) {
     const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
@@ -689,6 +691,24 @@ export default function App() {
     if (error) { notify("Could not update: " + error.message, false); return; }
     notify(status === "verified" ? "Staff verified." : "Staff rejected.");
     loadAdmin();
+  }
+  const [deletingUserId, setDeletingUserId] = useState(null);
+  async function deleteAccount(u) {
+    if (!confirm(
+      "Permanently delete " + u.name + "'s " + u.role + " account? This cannot be undone.\n\n" +
+      "This will be refused if the account has any real activity (claimed tickets, notes, payouts, ratings, or - for a hospital - tickets/doctors on its roster)."
+    )) return;
+    setDeletingUserId(u.id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin-delete-account", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ userId: u.id }),
+    });
+    const body = await res.json();
+    setDeletingUserId(null);
+    if (!res.ok) { notify(body.error || "Could not delete account.", false); return; }
+    notify("Account deleted.");
+    loadAllUsers();
   }
 
   // ==========================================================================
@@ -1419,10 +1439,10 @@ export default function App() {
             <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>Pending Hospital Verification ({pendingHospitals.length})</div>
             {pendingHospitals.map(h => (
               <div key={h.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{h.name}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{h.hospital?.name || "(hospital name missing)"}</div>
                 {h.hospital ? (
                   <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
-                    <div><strong>Hospital:</strong> {h.hospital.name}</div>
+                    <div style={{ color: C.muted, marginBottom: 4 }}>Registered by {h.name}</div>
                     <div><strong>Town:</strong> {h.hospital.town}</div>
                     {h.hospital.address && <div><strong>Address:</strong> {h.hospital.address}</div>}
                     {h.hospital.phone && <div><strong>Phone:</strong> {h.hospital.phone}</div>}
@@ -1459,8 +1479,12 @@ export default function App() {
               <div key={u.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{u.name}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{u.phone || "no phone"}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{u.role === "hospital" ? (u.hospital?.name || "(hospital name missing)") : u.name}</div>
+                    {u.role === "hospital" ? (
+                      <div style={{ fontSize: 11, color: C.muted }}>Registered by {u.name}{u.phone ? " - " + u.phone : ""}</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: C.muted }}>{u.phone || "no phone"}</div>
+                    )}
                   </div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <Tag kind={u.role}>{u.role}</Tag>
@@ -1488,6 +1512,14 @@ export default function App() {
                   )}
                   {u.role === "staff" && u.staff_verification_status === "verified" && (
                     <Btn label="Suspend" small onClick={() => changeUserVerification(u.id, "suspended")} />
+                  )}
+                  {(u.role === "staff" || u.role === "hospital") && (
+                    <button onClick={() => deleteAccount(u)} disabled={deletingUserId === u.id} style={{
+                      padding: "8px 14px", fontSize: 12, fontWeight: 700, borderRadius: 10,
+                      cursor: deletingUserId === u.id ? "default" : "pointer",
+                      border: "1.5px solid " + C.red, background: C.white, color: C.red,
+                      fontFamily: "system-ui", opacity: deletingUserId === u.id ? 0.6 : 1,
+                    }}>{deletingUserId === u.id ? "..." : "Delete"}</button>
                   )}
                 </div>
               </div>
