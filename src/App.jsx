@@ -1,505 +1,1689 @@
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "./lib/supabaseClient.js";
+import { makeT } from "./i18n.js";
+
 // ============================================================================
-// i18n.js - all user-facing strings for Ticket-In, English + French.
-// Organized to roughly mirror App.jsx's own section comments so it's easy
-// to find the strings for a given screen. Keys are namespaced by screen/
-// area (landing.*, checkin.*, auth.*, staff.*, admin.*, hospital.*, ...).
-//
-// Usage: const t = makeT(lang); t("landing.checkInNow")
-// Templates: store "{placeholder}" tokens, pass vars: t("key", { level: 8 })
+// THEME
 // ============================================================================
-
-export const translations = {
-  // --------------------------------------------------------------------
-  // COMMON - shared across many screens (buttons, agree-to-terms, roles,
-  // ticket/payment/verification status labels, generic error fallbacks)
-  // --------------------------------------------------------------------
-  "common.back": { en: "Back", fr: "Retour" },
-  "common.privacyPolicy": { en: "Privacy Policy", fr: "Politique de confidentialité" },
-  "common.termsOfService": { en: "Terms of Service", fr: "Conditions d'utilisation" },
-  "common.agreeBefore": { en: "By continuing you agree to our ", fr: "En continuant, vous acceptez nos " },
-  "common.agreeMiddle": { en: " and ", fr: " et notre " },
-  "common.agreeAfter": { en: ".", fr: "." },
-  "common.loading": { en: "Loading...", fr: "Chargement..." },
-  "common.remove": { en: "Remove", fr: "Retirer" },
-  "common.reply": { en: "Reply", fr: "Répondre" },
-  "common.confirm": { en: "Confirm", fr: "Confirmer" },
-  "common.verify": { en: "Verify", fr: "Vérifier" },
-  "common.reject": { en: "Reject", fr: "Rejeter" },
-  "common.save": { en: "Save", fr: "Enregistrer" },
-  "common.cancel": { en: "Cancel", fr: "Annuler" },
-  "common.contact": { en: "Contact:", fr: "Contact :" },
-  "common.guardian": { en: "Guardian:", fr: "Tuteur :" },
-  "common.couldNotUpdate": { en: "Could not update: {error}", fr: "Mise à jour impossible : {error}" },
-  "common.couldNotRemove": { en: "Could not remove: {error}", fr: "Suppression impossible : {error}" },
-  "common.updated": { en: "Updated.", fr: "Mis à jour." },
-  "common.unknownHospital": { en: "Unknown hospital", fr: "Hôpital inconnu" },
-  "common.noPhone": { en: "no phone", fr: "aucun téléphone" },
-  "common.licenseNumberLabel": { en: "License #:", fr: "N° de licence :" },
-  "common.institutionLabel": { en: "Institution:", fr: "Établissement :" },
-  "common.specialtyLabel": { en: "Specialty:", fr: "Spécialité :" },
-  "common.townLabel": { en: "Town:", fr: "Ville :" },
-  "common.addressLabel": { en: "Address:", fr: "Adresse :" },
-  "common.phoneLabel": { en: "Phone:", fr: "Téléphone :" },
-  "common.noCredentialsWarning": { en: "No credentials submitted - do not verify without checking why.", fr: "Aucun justificatif soumis - ne pas vérifier sans en comprendre la raison." },
-  "common.noHospitalRecordWarning": { en: "No hospital record found - do not verify without checking why.", fr: "Aucune fiche d'hôpital trouvée - ne pas vérifier sans en comprendre la raison." },
-  "common.registeredBy": { en: "Registered by {name}", fr: "Enregistré par {name}" },
-
-  // Ticket status / payment status / verification status / role display labels.
-  // NOTE: these are DISPLAY-ONLY. The underlying DB values ("open",
-  // "resolved", "staff", etc.) used in Supabase queries must never change.
-  "status.open": { en: "Open", fr: "Ouvert" },
-  "status.claimed": { en: "Claimed", fr: "Pris en charge" },
-  "status.in_progress": { en: "In progress", fr: "En cours" },
-  "status.resolved": { en: "Resolved", fr: "Résolu" },
-  "status.form_submitted": { en: "Form submitted", fr: "Formulaire soumis" },
-  "status.expired": { en: "Expired", fr: "Expiré" },
-  "status.pending": { en: "Pending", fr: "En attente" },
-  "status.paid": { en: "Paid", fr: "Payé" },
-  "status.completed": { en: "Completed", fr: "Terminé" },
-  "status.failed": { en: "Failed", fr: "Échoué" },
-  "status.verified": { en: "Verified", fr: "Vérifié" },
-  "status.rejected": { en: "Rejected", fr: "Rejeté" },
-  "status.suspended": { en: "Suspended", fr: "Suspendu" },
-  "status.staff": { en: "Staff", fr: "Personnel soignant" },
-  "status.admin": { en: "Admin", fr: "Administrateur" },
-  "status.hospital": { en: "Hospital", fr: "Hôpital" },
-  "status.urgent": { en: "Urgent", fr: "Urgent" },
-  "status.minor": { en: "Minor", fr: "Mineur" },
-  "status.minorGuardianOnFile": { en: "Minor - Guardian on File", fr: "Mineur - Tuteur enregistré" },
-
-  // --------------------------------------------------------------------
-  // TIME - relative "time ago" phrasing (timeAgo helper)
-  // --------------------------------------------------------------------
-  "time.justNow": { en: "just now", fr: "à l'instant" },
-  "time.minAgo": { en: "{m}m ago", fr: "il y a {m} min" },
-  "time.hourMinAgo": { en: "{h}h {m}m ago", fr: "il y a {h} h {m} min" },
-  "time.dayHourAgo": { en: "{d}d {h}h ago", fr: "il y a {d} j {h} h" },
-
-  // --------------------------------------------------------------------
-  // LANDING
-  // --------------------------------------------------------------------
-  "landing.headline": { en: "Don't know where to start? Start here.", fr: "Vous ne savez pas par où commencer ? Commencez ici." },
-  "landing.subtext": { en: "Check in with just your phone number, describe how you're feeling, and get matched with a qualified freelance healthcare professional.", fr: "Enregistrez-vous avec simplement votre numéro de téléphone, décrivez comment vous vous sentez, et soyez mis en relation avec un professionnel de santé indépendant qualifié." },
-  "landing.checkInNow": { en: "Check In Now", fr: "S'enregistrer maintenant" },
-  "landing.checkTicketStatus": { en: "Check My Ticket Status", fr: "Vérifier le statut de mon ticket" },
-  "landing.imHealthcareProfessional": { en: "I'm a Healthcare Professional", fr: "Je suis un professionnel de santé" },
-  "landing.registerMyHospital": { en: "Register My Hospital", fr: "Enregistrer mon hôpital" },
-
-  // --------------------------------------------------------------------
-  // LOOKUP (account-free ticket status check)
-  // --------------------------------------------------------------------
-  "lookup.title": { en: "Check My Ticket", fr: "Vérifier mon ticket" },
-  "lookup.subtext": { en: "Enter the phone number and code you were given at check-in.", fr: "Entrez le numéro de téléphone et le code qui vous ont été donnés lors de l'enregistrement." },
-  "lookup.phoneNumber": { en: "Phone Number", fr: "Numéro de téléphone" },
-  "lookup.yourCode": { en: "Your Code", fr: "Votre code" },
-  "lookup.codePlaceholder": { en: "e.g. A7K92M", fr: "ex. A7K92M" },
-  "lookup.checking": { en: "Checking...", fr: "Vérification..." },
-  "lookup.checkStatus": { en: "Check Status", fr: "Vérifier le statut" },
-  "lookup.summaryFromProfessional": { en: "Summary from your professional:", fr: "Résumé de votre professionnel de santé :" },
-  "lookup.enterBoth": { en: "Please enter both your phone number and code.", fr: "Veuillez entrer votre numéro de téléphone et votre code." },
-  "lookup.notFound": { en: "Could not find that ticket.", fr: "Impossible de trouver ce ticket." },
-  "lookup.checkFailed": { en: "Could not check status: {error}", fr: "Impossible de vérifier le statut : {error}" },
-
-  // --------------------------------------------------------------------
-  // CHECK-IN (account-free client flow)
-  // --------------------------------------------------------------------
-  "checkin.title": { en: "Check In", fr: "Enregistrement" },
-  "checkin.subtext": { en: "No account needed. Tell us how you're feeling and how to reach you.", fr: "Aucun compte nécessaire. Dites-nous comment vous vous sentez et comment vous joindre." },
-  "checkin.notEmergencyTitle": { en: "Not for emergencies", fr: "Ne convient pas aux urgences" },
-  "checkin.notEmergencyBody": { en: "Ticket-In is a consultation platform, not an emergency service. If you are experiencing a life-threatening emergency - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything you believe could be life-threatening - go to the nearest hospital or call emergency services immediately. Do not wait for a Ticket-In consultation.", fr: "Ticket-In est une plateforme de consultation, et non un service d'urgence. Si vous vivez une urgence pouvant mettre votre vie en danger — difficulté respiratoire sévère, douleur thoracique, saignement incontrôlé, perte de conscience, ou toute situation que vous jugez potentiellement mortelle — rendez-vous immédiatement à l'hôpital le plus proche ou appelez les services d'urgence. N'attendez pas une consultation Ticket-In." },
-  "checkin.phoneNumber": { en: "Phone Number", fr: "Numéro de téléphone" },
-  "checkin.phonePlaceholder": { en: "e.g. 6XX XXX XXX", fr: "ex. 6XX XXX XXX" },
-  "checkin.howSeen": { en: "How would you like to be seen?", fr: "Comment souhaitez-vous être consulté(e) ?" },
-  "checkin.remoteConsultation": { en: "Remote consultation", fr: "Consultation à distance" },
-  "checkin.inPersonAtHospital": { en: "In-person at a hospital", fr: "En personne dans un hôpital" },
-  "checkin.chooseHospital": { en: "Choose a hospital", fr: "Choisissez un hôpital" },
-  "checkin.selectHospitalPlaceholder": { en: "Select a hospital...", fr: "Sélectionnez un hôpital..." },
-  "checkin.noHospitalsRegistered": { en: "No hospitals are registered yet - please choose a remote consultation instead.", fr: "Aucun hôpital n'est encore enregistré - veuillez choisir une consultation à distance à la place." },
-  "checkin.areYou18": { en: "Are you 18 or older?", fr: "Avez-vous 18 ans ou plus ?" },
-  "checkin.yes18OrOlder": { en: "Yes, 18 or older", fr: "Oui, 18 ans ou plus" },
-  "checkin.noUnder18": { en: "No, under 18", fr: "Non, moins de 18 ans" },
-  "checkin.guardianRequiredNotice": { en: "Ticket-In requires a parent or guardian's details for anyone under 18. Please have them check in with you, or provide their information below.", fr: "Ticket-In exige les coordonnées d'un parent ou tuteur pour toute personne de moins de 18 ans. Demandez-leur de faire l'enregistrement avec vous, ou indiquez leurs informations ci-dessous." },
-  "checkin.guardianName": { en: "Parent/Guardian Name", fr: "Nom du parent/tuteur" },
-  "checkin.guardianPhone": { en: "Parent/Guardian Phone", fr: "Téléphone du parent/tuteur" },
-  "checkin.severity": { en: "Severity", fr: "Gravité" },
-  "checkin.severityScale": { en: "(1 = very mild, 10 = worst imaginable)", fr: "(1 = très légère, 10 = pire imaginable)" },
-  "checkin.severityUrgentWarning": { en: "This severity level may need urgent or emergency care - please read the notice above carefully.", fr: "Ce niveau de gravité peut nécessiter des soins urgents - veuillez lire attentivement l'avis ci-dessus." },
-  "checkin.describeSeverity": { en: "Describe the severity in your own words (optional)", fr: "Décrivez la gravité avec vos propres mots (facultatif)" },
-  "checkin.describeSeverityPlaceholder": { en: "e.g. sharp pain, hard to walk", fr: "ex. douleur vive, difficulté à marcher" },
-  "checkin.anythingElse": { en: "Anything else?", fr: "Autre chose à ajouter ?" },
-  "checkin.emergencyAckLabel": { en: "I understand Ticket-In is not for medical emergencies, and I will seek emergency care directly if my situation is life-threatening.", fr: "Je comprends que Ticket-In n'est pas destiné aux urgences médicales, et je chercherai des soins d'urgence directement si ma situation met ma vie en danger." },
-  "checkin.submitting": { en: "Submitting...", fr: "Envoi en cours..." },
-  "checkin.submitAndContinue": { en: "Submit and Continue", fr: "Envoyer et continuer" },
-  "checkin.pleaseReadFirst": { en: "Please Read This First", fr: "Veuillez lire ceci d'abord" },
-  "checkin.severityWarningModalBody": { en: "You reported a severity of {level}/10. If what you're experiencing feels life-threatening - severe difficulty breathing, chest pain, uncontrolled bleeding, loss of consciousness, or anything similarly urgent - please go to the nearest hospital or call emergency services now, rather than waiting for a Ticket-In consultation.", fr: "Vous avez signalé une gravité de {level}/10. Si ce que vous ressentez semble mettre votre vie en danger — difficulté respiratoire sévère, douleur thoracique, saignement incontrôlé, perte de conscience, ou toute situation aussi urgente — rendez-vous immédiatement à l'hôpital le plus proche ou appelez les services d'urgence, plutôt que d'attendre une consultation Ticket-In." },
-  "checkin.urgentTicketNotice": { en: "Your ticket has been marked urgent and will be shown to staff as a priority. If you believe this can safely wait for a consultation, you can continue below.", fr: "Votre ticket a été marqué comme urgent et sera présenté au personnel en priorité. Si vous pensez que cela peut attendre une consultation en toute sécurité, vous pouvez continuer ci-dessous." },
-  "checkin.iUnderstandContinue": { en: "I understand, continue", fr: "J'ai compris, continuer" },
-
-  // OLDCART fields (onset/location/duration/character/aggravating/relieving/timing)
-  "checkin.field.onset.label": { en: "Onset", fr: "Début" },
-  "checkin.field.onset.placeholder": { en: "When did this first begin? (e.g. 3 days ago, this morning)", fr: "Quand cela a-t-il commencé ? (ex. il y a 3 jours, ce matin)" },
-  "checkin.field.location.label": { en: "Location", fr: "Localisation" },
-  "checkin.field.location.placeholder": { en: "Where on the body?", fr: "À quel endroit du corps ?" },
-  "checkin.field.duration.label": { en: "Duration", fr: "Durée" },
-  "checkin.field.duration.placeholder": { en: "How long does it last each time? (e.g. a few minutes, all day, non-stop since it began)", fr: "Combien de temps cela dure-t-il à chaque fois ? (ex. quelques minutes, toute la journée, en continu depuis le début)" },
-  "checkin.field.character.label": { en: "Character", fr: "Caractère" },
-  "checkin.field.character.placeholder": { en: "What does it feel like?", fr: "Quelle sensation cela procure-t-il ?" },
-  "checkin.field.aggravating_factors.label": { en: "Aggravating Factors", fr: "Facteurs aggravants" },
-  "checkin.field.aggravating_factors.placeholder": { en: "What makes it worse?", fr: "Qu'est-ce qui l'aggrave ?" },
-  "checkin.field.relieving_factors.label": { en: "Relieving Factors", fr: "Facteurs soulageants" },
-  "checkin.field.relieving_factors.placeholder": { en: "What makes it better?", fr: "Qu'est-ce qui le soulage ?" },
-  "checkin.field.timing.label": { en: "Timing", fr: "Fréquence" },
-  "checkin.field.timing.placeholder": { en: "Constant, or does it come and go?", fr: "Est-ce constant, ou est-ce que cela va et vient ?" },
-
-  // Check-in validation / submit errors
-  "checkin.err.readEmergencyNotice": { en: "Please confirm you've read the emergency notice before continuing.", fr: "Veuillez confirmer avoir lu l'avis d'urgence avant de continuer." },
-  "checkin.err.enterPhone": { en: "Please enter your phone number.", fr: "Veuillez entrer votre numéro de téléphone." },
-  "checkin.err.onsetSeverityRequired": { en: "Please fill in at least Onset and Severity.", fr: "Veuillez au moins remplir les champs Début et Gravité." },
-  "checkin.err.confirmAge": { en: "Please confirm whether you are 18 or older.", fr: "Veuillez confirmer si vous avez 18 ans ou plus." },
-  "checkin.err.guardianRequired": { en: "A parent or guardian's name and phone number are required.", fr: "Le nom et le numéro de téléphone d'un parent ou tuteur sont requis." },
-  "checkin.err.chooseHospital": { en: "Please choose a hospital.", fr: "Veuillez choisir un hôpital." },
-  "checkin.err.submitFailed": { en: "Could not submit check-in.", fr: "Impossible d'envoyer l'enregistrement." },
-  "checkin.err.submitFailedWithError": { en: "Could not submit check-in: {error}", fr: "Impossible d'envoyer l'enregistrement : {error}" },
-
-  // --------------------------------------------------------------------
-  // CHECK-IN CODE / PAYMENT
-  // --------------------------------------------------------------------
-  "checkincode.submitted": { en: "Check-In Submitted", fr: "Enregistrement envoyé" },
-  "checkincode.saveCodeNotice": { en: "Your code - save this, you'll need it to check your status:", fr: "Votre code - conservez-le, vous en aurez besoin pour vérifier votre statut :" },
-  "checkincode.tapToCopyNotice": { en: "Tap to copy - along with your phone number, this is how you'll check your ticket later.", fr: "Touchez pour copier - avec votre numéro de téléphone, c'est ainsi que vous vérifierez votre ticket plus tard." },
-  "checkincode.continueToPayment": { en: "Continue to Payment", fr: "Continuer vers le paiement" },
-  "checkincode.completePayment": { en: "Complete Payment", fr: "Finaliser le paiement" },
-  "checkincode.sendExactly": { en: "SEND EXACTLY", fr: "ENVOYEZ EXACTEMENT" },
-  "checkincode.loadingPaymentDetails": { en: "Loading payment details...", fr: "Chargement des informations de paiement..." },
-  "checkincode.copiedSendViaMomo": { en: "Copied - now send via MoMo", fr: "Copié - envoyez maintenant via MoMo" },
-  "checkincode.tapToCopyMomo": { en: "Tap to copy MoMo number", fr: "Touchez pour copier le numéro MoMo" },
-  "checkincode.referenceLabel": { en: "Reference from confirmation SMS", fr: "Référence du SMS de confirmation" },
-  "checkincode.referencePlaceholder": { en: "e.g. MP240905.1234.A56789", fr: "ex. MP240905.1234.A56789" },
-  "checkincode.ivesSentPayment": { en: "I've Sent the Payment", fr: "J'ai envoyé le paiement" },
-  "checkincode.err.copyLongPress": { en: "Could not copy - long-press to copy manually.", fr: "Copie impossible - appuyez longuement pour copier manuellement." },
-  "checkincode.codeCopied": { en: "Code copied.", fr: "Code copié." },
-  "checkincode.err.copyWriteDown": { en: "Could not copy - please write it down.", fr: "Copie impossible - veuillez le noter." },
-  "checkincode.err.paymentDetailsFailed": { en: "Could not load payment details.", fr: "Impossible de charger les informations de paiement." },
-  "checkincode.err.paymentDetailsFailedWithError": { en: "Could not load payment details: {error}", fr: "Impossible de charger les informations de paiement : {error}" },
-  "checkincode.err.enterReference": { en: "Please enter your transaction reference.", fr: "Veuillez entrer votre référence de transaction." },
-  "checkincode.err.submitPaymentFailed": { en: "Could not submit payment.", fr: "Impossible d'envoyer le paiement." },
-  "checkincode.paymentSubmitted": { en: "Payment submitted! We'll confirm shortly and your consultation will open.", fr: "Paiement envoyé ! Nous le confirmerons sous peu et votre consultation s'ouvrira." },
-  "checkincode.err.submitPaymentFailedWithError": { en: "Could not submit payment: {error}", fr: "Impossible d'envoyer le paiement : {error}" },
-
-  // --------------------------------------------------------------------
-  // AUTH (staff / admin / hospital sign in & sign up)
-  // --------------------------------------------------------------------
-  "auth.hospitalSignUp": { en: "Hospital Sign Up", fr: "Inscription hôpital" },
-  "auth.professionalSignUp": { en: "Professional Sign Up", fr: "Inscription professionnel" },
-  "auth.signIn": { en: "Sign In", fr: "Connexion" },
-  "auth.registerHospitalSubtext": { en: "Register your hospital or clinic.", fr: "Enregistrez votre hôpital ou clinique." },
-  "auth.forVerifiedStaffSubtext": { en: "For verified healthcare staff and admin only.", fr: "Réservé au personnel de santé et aux administrateurs vérifiés." },
-  "auth.signInSubtext": { en: "Sign in to your account.", fr: "Connectez-vous à votre compte." },
-  "auth.healthcareProfessional": { en: "Healthcare Professional", fr: "Professionnel de santé" },
-  "auth.hospital": { en: "Hospital", fr: "Hôpital" },
-  "auth.yourNameHospitalContact": { en: "Your Name (hospital contact)", fr: "Votre nom (contact de l'hôpital)" },
-  "auth.fullName": { en: "Full Name", fr: "Nom complet" },
-  "auth.licenseNumber": { en: "License / Registration Number", fr: "Numéro de licence / d'enregistrement" },
-  "auth.issuingInstitution": { en: "Issuing Institution", fr: "Établissement émetteur" },
-  "auth.specialtyOptional": { en: "Specialty (optional)", fr: "Spécialité (facultatif)" },
-  "auth.staffReviewNotice": { en: "An admin will review these before your account can claim tickets. If you're affiliated with a hospital already registered here, that hospital can add you to its roster from its dashboard using this email.", fr: "Un administrateur examinera ces informations avant que votre compte puisse prendre en charge des tickets. Si vous êtes affilié à un hôpital déjà enregistré ici, cet hôpital peut vous ajouter à son équipe depuis son tableau de bord en utilisant cet e-mail." },
-  "auth.hospitalClinicName": { en: "Hospital / Clinic Name", fr: "Nom de l'hôpital / de la clinique" },
-  "auth.town": { en: "Town", fr: "Ville" },
-  "auth.addressOptional": { en: "Address (optional)", fr: "Adresse (facultatif)" },
-  "auth.phoneOptional": { en: "Phone (optional)", fr: "Téléphone (facultatif)" },
-  "auth.hospitalReviewNotice": { en: "An admin will review and verify your hospital before it appears in the client check-in list. Once verified, you can add doctors to your roster from your dashboard.", fr: "Un administrateur examinera et vérifiera votre hôpital avant qu'il n'apparaisse dans la liste d'enregistrement des clients. Une fois vérifié, vous pourrez ajouter des médecins à votre équipe depuis votre tableau de bord." },
-  "auth.email": { en: "Email", fr: "E-mail" },
-  "auth.passwordMinChars": { en: "Password (at least 8 characters)", fr: "Mot de passe (au moins 8 caractères)" },
-  "auth.password": { en: "Password", fr: "Mot de passe" },
-  "auth.agreeBefore": { en: "By creating an account you agree to our ", fr: "En créant un compte, vous acceptez nos " },
-  "auth.pleaseWait": { en: "Please wait...", fr: "Veuillez patienter..." },
-  "auth.createAccount": { en: "Create Account", fr: "Créer un compte" },
-  "auth.forgotPassword": { en: "Forgot password?", fr: "Mot de passe oublié ?" },
-  "auth.alreadyHaveAccount": { en: "Already have an account? ", fr: "Vous avez déjà un compte ? " },
-  "auth.newHere": { en: "New here? ", fr: "Nouveau ici ? " },
-  "auth.signInLink": { en: "Sign in", fr: "Se connecter" },
-  "auth.createOneLink": { en: "Create one", fr: "En créer un" },
-  "auth.err.emailPasswordRequired": { en: "Email and password required.", fr: "L'e-mail et le mot de passe sont requis." },
-  "auth.err.passwordMin8": { en: "Password must be at least 8 characters.", fr: "Le mot de passe doit contenir au moins 8 caractères." },
-  "auth.err.licenseInstitutionRequired": { en: "License number and issuing institution are required.", fr: "Le numéro de licence et l'établissement émetteur sont requis." },
-  "auth.err.hospitalNameTownRequired": { en: "Hospital name and town are required.", fr: "Le nom de l'hôpital et la ville sont requis." },
-  "auth.err.nameRequired": { en: "Name is required.", fr: "Le nom est requis." },
-  "auth.err.registrationNotFinalized": { en: "Account created, but registration could not be finalized.", fr: "Compte créé, mais l'inscription n'a pas pu être finalisée." },
-  "auth.accountCreatedConfirmEmail": { en: "Account created - please check your email to confirm, then sign in.", fr: "Compte créé - veuillez vérifier votre e-mail pour confirmer, puis vous connecter." },
-  "auth.accountCreated": { en: "Account created!", fr: "Compte créé !" },
-
-  // --------------------------------------------------------------------
-  // PASSWORD RESET
-  // --------------------------------------------------------------------
-  "reset.backToSignIn": { en: "Back to sign in", fr: "Retour à la connexion" },
-  "reset.resetPassword": { en: "Reset Password", fr: "Réinitialiser le mot de passe" },
-  "reset.linkSentNotice": { en: "If an account exists for that email, a password reset link has been sent. Check your inbox and follow the link to set a new password.", fr: "Si un compte existe pour cet e-mail, un lien de réinitialisation a été envoyé. Vérifiez votre boîte de réception et suivez le lien pour définir un nouveau mot de passe." },
-  "reset.enterEmailNotice": { en: "Enter your account email and we'll send you a reset link.", fr: "Entrez l'e-mail de votre compte et nous vous enverrons un lien de réinitialisation." },
-  "reset.sending": { en: "Sending...", fr: "Envoi en cours..." },
-  "reset.sendResetLink": { en: "Send Reset Link", fr: "Envoyer le lien de réinitialisation" },
-  "reset.err.enterEmailFirst": { en: "Enter your email first.", fr: "Veuillez d'abord entrer votre e-mail." },
-  "reset.setNewPassword": { en: "Set a New Password", fr: "Définir un nouveau mot de passe" },
-  "reset.chooseNewPasswordNotice": { en: "Choose a new password for your account.", fr: "Choisissez un nouveau mot de passe pour votre compte." },
-  "reset.newPasswordMinChars": { en: "New Password (at least 8 characters)", fr: "Nouveau mot de passe (au moins 8 caractères)" },
-  "reset.saving": { en: "Saving...", fr: "Enregistrement..." },
-  "reset.savePassword": { en: "Save Password", fr: "Enregistrer le mot de passe" },
-  "reset.passwordUpdated": { en: "Password updated.", fr: "Mot de passe mis à jour." },
-
-  // --------------------------------------------------------------------
-  // APP SHELL / SIDEBAR
-  // --------------------------------------------------------------------
-  "shell.ticketBoard": { en: "Ticket Board", fr: "Tableau des tickets" },
-  "shell.hospitalDashboard": { en: "Hospital Dashboard", fr: "Tableau de bord hôpital" },
-  "shell.forum": { en: "Forum", fr: "Forum" },
-  "shell.resources": { en: "Resources", fr: "Ressources" },
-  "shell.admin": { en: "Admin", fr: "Administration" },
-  "shell.manageUsers": { en: "Manage Users", fr: "Gérer les utilisateurs" },
-  "shell.signOut": { en: "Sign Out", fr: "Se déconnecter" },
-  "shell.privacy": { en: "Privacy", fr: "Confidentialité" },
-  "shell.terms": { en: "Terms", fr: "Conditions" },
-
-  // --------------------------------------------------------------------
-  // STAFF BOARD
-  // --------------------------------------------------------------------
-  "staff.ticketBoard": { en: "Ticket Board", fr: "Tableau des tickets" },
-  "staff.pendingVerificationNotice": { en: "Your account is pending verification. You'll be able to claim tickets once an admin approves your account.", fr: "Votre compte est en attente de vérification. Vous pourrez prendre en charge des tickets une fois qu'un administrateur aura approuvé votre compte." },
-  "staff.openTickets": { en: "Open Tickets ({count})", fr: "Tickets ouverts ({count})" },
-  "staff.waitingSince": { en: "Waiting {time}", fr: "En attente {time}" },
-  "staff.onsetLabel": { en: "Onset:", fr: "Début :" },
-  "staff.severityLabel": { en: "Severity:", fr: "Gravité :" },
-  "staff.claimTicket": { en: "Claim Ticket", fr: "Prendre en charge" },
-  "staff.myClaimedTickets": { en: "My Claimed Tickets ({count})", fr: "Mes tickets pris en charge ({count})" },
-  "staff.submittedTime": { en: "Submitted {time}", fr: "Envoyé {time}" },
-  "staff.startConsultation": { en: "Start Consultation", fr: "Démarrer la consultation" },
-  "staff.resolveAddNotes": { en: "Resolve & Add Notes", fr: "Résoudre et ajouter des notes" },
-  "staff.myEarningsPending": { en: "My Earnings ({amount} XAF pending)", fr: "Mes gains ({amount} XAF en attente)" },
-  "staff.resolveToEarnNotice": { en: "Resolve a consultation to start earning.", fr: "Résolvez une consultation pour commencer à gagner." },
-  "staff.err.claimFailed": { en: "Could not claim ticket.", fr: "Impossible de prendre en charge le ticket." },
-  "staff.ticketClaimed": { en: "Ticket claimed.", fr: "Ticket pris en charge." },
-  "staff.consultationStarted": { en: "Consultation started.", fr: "Consultation démarrée." },
-
-  // --------------------------------------------------------------------
-  // FORUM
-  // --------------------------------------------------------------------
-  "forum.title": { en: "Forum", fr: "Forum" },
-  "forum.subtext": { en: "Professional discussion between staff and admin. Not visible to clients.", fr: "Discussion professionnelle entre le personnel et les administrateurs. Non visible pour les clients." },
-  "forum.startDiscussion": { en: "Start a Discussion", fr: "Démarrer une discussion" },
-  "forum.subjectOptional": { en: "Subject (optional)", fr: "Sujet (facultatif)" },
-  "forum.subjectPlaceholder": { en: "e.g. Case management", fr: "ex. gestion de cas" },
-  "forum.whatsOnYourMind": { en: "What's on your mind?", fr: "Qu'avez-vous en tête ?" },
-  "forum.bodyPlaceholder": { en: "Ask a question or start a discussion...", fr: "Posez une question ou lancez une discussion..." },
-  "forum.post": { en: "Post", fr: "Publier" },
-  "forum.notVerifiedNotice": { en: "You'll be able to post once your account is verified. You can still read the forum.", fr: "Vous pourrez publier une fois votre compte vérifié. Vous pouvez néanmoins lire le forum." },
-  "forum.writeReplyPlaceholder": { en: "Write a reply...", fr: "Écrivez une réponse..." },
-  "forum.noDiscussionsYet": { en: "No discussions yet - be the first to post.", fr: "Aucune discussion pour l'instant - soyez le premier à publier." },
-  "forum.err.writeSomething": { en: "Write something before posting.", fr: "Écrivez quelque chose avant de publier." },
-  "forum.err.postFailed": { en: "Could not post: {error}", fr: "Publication impossible : {error}" },
-  "forum.err.replyFailed": { en: "Could not reply: {error}", fr: "Réponse impossible : {error}" },
-  "forum.confirmRemovePost": { en: "Remove this post?", fr: "Retirer cette publication ?" },
-
-  // --------------------------------------------------------------------
-  // RESOURCES
-  // --------------------------------------------------------------------
-  "resources.title": { en: "Resources", fr: "Ressources" },
-  "resources.addResource": { en: "Add Resource", fr: "Ajouter une ressource" },
-  "resources.subtext": { en: "Reference guidelines, protocols, and notes for staff.", fr: "Directives de référence, protocoles et notes pour le personnel." },
-  "resources.titleLabel": { en: "Title", fr: "Titre" },
-  "resources.titlePlaceholder": { en: "e.g. WHO Triage Guidelines", fr: "ex. Directives de triage de l'OMS" },
-  "resources.categoryOptional": { en: "Category (optional)", fr: "Catégorie (facultatif)" },
-  "resources.categoryPlaceholder": { en: "e.g. Triage, Referral", fr: "ex. Triage, Orientation" },
-  "resources.descriptionOptional": { en: "Description (optional)", fr: "Description (facultatif)" },
-  "resources.linkOptional": { en: "Link (optional)", fr: "Lien (facultatif)" },
-  "resources.linkPlaceholder": { en: "https://...", fr: "https://..." },
-  "resources.writtenContentOptional": { en: "Written content (optional)", fr: "Contenu écrit (facultatif)" },
-  "resources.writtenContentPlaceholder": { en: "Notes, a protocol, or guidance written directly here...", fr: "Notes, un protocole, ou des directives écrites directement ici..." },
-  "resources.saveResource": { en: "Save Resource", fr: "Enregistrer la ressource" },
-  "resources.openLink": { en: "Open Link →", fr: "Ouvrir le lien →" },
-  "resources.noResourcesYet": { en: "No resources yet.", fr: "Aucune ressource pour l'instant." },
-  "resources.err.titleRequired": { en: "A title is required.", fr: "Un titre est requis." },
-  "resources.err.linkOrTextRequired": { en: "Add a link, written content, or both.", fr: "Ajoutez un lien, du contenu écrit, ou les deux." },
-  "resources.err.addFailed": { en: "Could not add resource: {error}", fr: "Impossible d'ajouter la ressource : {error}" },
-  "resources.added": { en: "Resource added.", fr: "Ressource ajoutée." },
-  "resources.confirmRemove": { en: "Remove this resource?", fr: "Retirer cette ressource ?" },
-
-  // --------------------------------------------------------------------
-  // ADMIN
-  // --------------------------------------------------------------------
-  "admin.title": { en: "Admin", fr: "Administration" },
-  "admin.needsAttentionUrgent": { en: "Needs Attention - Urgent ({count})", fr: "Nécessite une attention - Urgent ({count})" },
-  "admin.urgentNotice": { en: "Severity 8+ and not yet resolved, regardless of payment status - a payment problem should never be why a potentially urgent case goes unnoticed.", fr: "Gravité 8 ou plus et non encore résolu, quel que soit le statut du paiement - un problème de paiement ne doit jamais être la raison pour laquelle un cas potentiellement urgent passe inaperçu." },
-  "admin.severityContact": { en: "Severity {level}/10 - Contact: {phone}", fr: "Gravité {level}/10 - Contact : {phone}" },
-  "admin.statTotal": { en: "Total", fr: "Total" },
-  "admin.statUrgentActive": { en: "Urgent (active)", fr: "Urgent (actif)" },
-  "admin.statOpen": { en: "Open", fr: "Ouverts" },
-  "admin.statClaimed": { en: "Claimed", fr: "Pris en charge" },
-  "admin.statInProgress": { en: "In Progress", fr: "En cours" },
-  "admin.statResolved": { en: "Resolved", fr: "Résolus" },
-  "admin.findTicketByPhone": { en: "Find a Ticket by Phone", fr: "Trouver un ticket par téléphone" },
-  "admin.searchPhonePlaceholder": { en: "e.g. 6XX XXX XXX", fr: "ex. 6XX XXX XXX" },
-  "admin.search": { en: "Search", fr: "Rechercher" },
-  "admin.noTicketsFoundForNumber": { en: "No tickets found for that number.", fr: "Aucun ticket trouvé pour ce numéro." },
-  "admin.severityCodePhone": { en: "Severity {level}/10 - Code: {code} - {phone}", fr: "Gravité {level}/10 - Code : {code} - {phone}" },
-  "admin.pendingPayments": { en: "Pending Payments ({count})", fr: "Paiements en attente ({count})" },
-  "admin.refLabel": { en: "Ref: {ref}", fr: "Réf. : {ref}" },
-  "admin.pendingStaffPayouts": { en: "Pending Staff Payouts ({count})", fr: "Rémunérations du personnel en attente ({count})" },
-  "admin.nothingOwedRightNow": { en: "Nothing owed right now.", fr: "Rien à payer pour le moment." },
-  "admin.earnedTime": { en: "Earned {time}", fr: "Gagné {time}" },
-  "admin.markPaid": { en: "Mark Paid", fr: "Marquer comme payé" },
-  "admin.pendingStaffVerification": { en: "Pending Staff Verification ({count})", fr: "Vérification du personnel en attente ({count})" },
-  "admin.pendingHospitalVerification": { en: "Pending Hospital Verification ({count})", fr: "Vérification des hôpitaux en attente ({count})" },
-  "admin.hospitalNameMissing": { en: "(hospital name missing)", fr: "(nom de l'hôpital manquant)" },
-  "admin.inPersonTicketsByHospital": { en: "In-Person Tickets by Hospital ({count})", fr: "Tickets en personne par hôpital ({count})" },
-  "admin.noInPersonTicketsYet": { en: "No in-person tickets yet.", fr: "Aucun ticket en personne pour l'instant." },
-  "admin.err.enterPhoneToSearch": { en: "Enter a phone number to search.", fr: "Entrez un numéro de téléphone pour rechercher." },
-  "admin.err.searchFailed": { en: "Search failed: {error}", fr: "Échec de la recherche : {error}" },
-  "admin.err.statsFailed": { en: "Could not load ticket stats: {error}", fr: "Impossible de charger les statistiques des tickets : {error}" },
-  "admin.markedPaid": { en: "Marked as paid.", fr: "Marqué comme payé." },
-  "admin.err.confirmPaymentFailed": { en: "Could not confirm payment.", fr: "Impossible de confirmer le paiement." },
-  "admin.paymentConfirmed": { en: "Payment confirmed, ticket is now open.", fr: "Paiement confirmé, le ticket est maintenant ouvert." },
-  "admin.staffVerified": { en: "Staff verified.", fr: "Personnel vérifié." },
-  "admin.staffRejected": { en: "Staff rejected.", fr: "Personnel rejeté." },
-  "admin.confirmDeleteAccount": { en: "Permanently delete {name}'s {role} account? This cannot be undone.\n\nThis will be refused if the account has any real activity (claimed tickets, notes, payouts, ratings, or - for a hospital - tickets/doctors on its roster).", fr: "Supprimer définitivement le compte {role} de {name} ? Cette action est irréversible.\n\nCela sera refusé si le compte a une activité réelle (tickets pris en charge, notes, rémunérations, évaluations, ou - pour un hôpital - des tickets/médecins sur son registre)." },
-  "admin.err.deleteAccountFailed": { en: "Could not delete account.", fr: "Impossible de supprimer le compte." },
-  "admin.accountDeleted": { en: "Account deleted.", fr: "Compte supprimé." },
-  "admin.err.updateRoleFailed": { en: "Could not update role: {error}", fr: "Impossible de mettre à jour le rôle : {error}" },
-  "admin.roleUpdated": { en: "Role updated.", fr: "Rôle mis à jour." },
-  "admin.err.loadUsersFailed": { en: "Could not load users: {error}", fr: "Impossible de charger les utilisateurs : {error}" },
-  "admin.setRolePrefix": { en: "Set ", fr: "Définir : " },
-
-  // --------------------------------------------------------------------
-  // MANAGE USERS
-  // --------------------------------------------------------------------
-  "users.title": { en: "Manage Users", fr: "Gérer les utilisateurs" },
-  "users.registeredByWithPhone": { en: "Registered by {name} - {phone}", fr: "Enregistré par {name} - {phone}" },
-  "users.verifiedOn": { en: "Verified {date}", fr: "Vérifié le {date}" },
-  "users.noCredentialsOnFile": { en: "No credentials on file.", fr: "Aucun justificatif enregistré." },
-  "users.suspend": { en: "Suspend", fr: "Suspendre" },
-  "users.delete": { en: "Delete", fr: "Supprimer" },
-
-  // --------------------------------------------------------------------
-  // HOSPITAL DASHBOARD
-  // --------------------------------------------------------------------
-  "hospital.dashboardFallbackTitle": { en: "Hospital Dashboard", fr: "Tableau de bord hôpital" },
-  "hospital.pendingVerificationNotice": { en: "Your hospital is pending admin verification. It won't appear in the client check-in list, and no tickets will be routed to it, until then.", fr: "Votre hôpital est en attente de vérification par un administrateur. Il n'apparaîtra pas dans la liste d'enregistrement des clients, et aucun ticket ne lui sera transmis, jusqu'à cette vérification." },
-  "hospital.doctorRoster": { en: "Doctor Roster ({count})", fr: "Équipe médicale ({count})" },
-  "hospital.addDoctorByEmail": { en: "Add a doctor by their registered email", fr: "Ajouter un médecin par son e-mail enregistré" },
-  "hospital.doctorEmailPlaceholder": { en: "doctor@email.com", fr: "medecin@email.com" },
-  "hospital.adding": { en: "Adding...", fr: "Ajout en cours..." },
-  "hospital.add": { en: "Add", fr: "Ajouter" },
-  "hospital.mustHaveAccountNotice": { en: "They must already have a Ticket-In healthcare-professional account.", fr: "Ils doivent déjà posséder un compte professionnel de santé Ticket-In." },
-  "hospital.ticketsSentToYourHospital": { en: "Tickets Sent to Your Hospital ({count})", fr: "Tickets envoyés à votre hôpital ({count})" },
-  "hospital.noInPersonTicketsYet": { en: "No in-person tickets yet.", fr: "Aucun ticket en personne pour l'instant." },
-  "hospital.err.enterDoctorEmail": { en: "Enter the doctor's registered email.", fr: "Entrez l'e-mail enregistré du médecin." },
-  "hospital.err.addDoctorFailed": { en: "Could not add doctor.", fr: "Impossible d'ajouter le médecin." },
-  "hospital.alreadyOnRoster": { en: "Already on your roster.", fr: "Déjà présent dans votre équipe." },
-  "hospital.doctorAddedToRoster": { en: "Doctor added to your roster: {name}", fr: "Médecin ajouté à votre équipe : {name}" },
-  "hospital.confirmRemoveDoctor": { en: "Remove this doctor from your roster?", fr: "Retirer ce médecin de votre équipe ?" },
-  "hospital.err.removeDoctorFailed": { en: "Could not remove doctor.", fr: "Impossible de retirer le médecin." },
-  "hospital.doctorRemoved": { en: "Doctor removed.", fr: "Médecin retiré." },
-
-  // --------------------------------------------------------------------
-  // RESOLVE TICKET MODAL
-  // --------------------------------------------------------------------
-  "resolve.title": { en: "Resolve Ticket", fr: "Résoudre le ticket" },
-  "resolve.objectiveAssessment": { en: "Objective Assessment", fr: "Évaluation objective" },
-  "resolve.clinicalDiagnosis": { en: "Clinical Diagnosis", fr: "Diagnostic clinique" },
-  "resolve.plan": { en: "Plan", fr: "Plan" },
-  "resolve.implementation": { en: "Implementation", fr: "Mise en œuvre" },
-  "resolve.evaluation": { en: "Evaluation", fr: "Évaluation" },
-  "resolve.clientSummaryNotice": { en: "Summary shown to the client (plain language, not clinical jargon):", fr: "Résumé montré au client (langage simple, sans jargon clinique) :" },
-  "resolve.clientSummary": { en: "Client Summary", fr: "Résumé pour le client" },
-  "resolve.resolving": { en: "Resolving...", fr: "Résolution en cours..." },
-  "resolve.resolveTicket": { en: "Resolve Ticket", fr: "Résoudre le ticket" },
-  "resolve.err.summaryRequired": { en: "Please write a summary for the client.", fr: "Veuillez rédiger un résumé pour le client." },
-  "resolve.err.resolveFailed": { en: "Could not resolve.", fr: "Impossible de résoudre." },
-  "resolve.ticketResolved": { en: "Ticket resolved.", fr: "Ticket résolu." },
-  "resolve.err.resolveFailedWithError": { en: "Could not resolve: {error}", fr: "Impossible de résoudre : {error}" },
-
-  // --------------------------------------------------------------------
-  // PRIVACY POLICY
-  // --------------------------------------------------------------------
-  "privacy.title": { en: "Privacy Policy", fr: "Politique de confidentialité" },
-  "privacy.lastUpdated": { en: "Last updated: September 2026", fr: "Dernière mise à jour : septembre 2026" },
-  "privacy.interimNotice": {
-    en: "This is a good-faith interim Privacy Policy, written to accurately describe what Ticket-In actually collects and does with your information today. It is not a substitute for formal authorization from Cameroon's Personal Data Protection Authority under Law No. 2024/017, which is required before this kind of processing can lawfully continue at any real scale. That authorization has not yet been obtained.",
-    fr: "Ceci est une politique de confidentialité provisoire, établie de bonne foi, rédigée pour décrire fidèlement ce que Ticket-In collecte réellement aujourd'hui et ce qu'il en fait. Elle ne remplace pas l'autorisation formelle de l'Autorité de Protection des Données Personnelles du Cameroun en vertu de la Loi n° 2024/017, laquelle est requise avant que ce type de traitement puisse légalement se poursuivre à une échelle réelle. Cette autorisation n'a pas encore été obtenue.",
-  },
-  "privacy.whoWeAreTitle": { en: "Who we are", fr: "Qui nous sommes" },
-  "privacy.whoWeAreBody": { en: "Ticket-In is a freelance healthcare consultation platform connecting clients with independent, freelance healthcare professionals in Cameroon.", fr: "Ticket-In est une plateforme de consultation de santé indépendante mettant en relation des clients avec des professionnels de santé indépendants au Cameroun." },
-  "privacy.whatWeCollectTitle": { en: "What we collect", fr: "Ce que nous collectons" },
-  "privacy.whatWeCollectBody": {
-    en: "<strong>If you check in as a client:</strong> your phone number; the health information you provide (onset, location, duration, character, aggravating/relieving factors, timing, severity, anything else you write); a system-generated code to look up your ticket later (no account, name, or email required); the mobile money transaction reference you submit when paying (we never see your mobile money account details themselves).<br /><br /><strong>If you register as staff:</strong> your name, email, password, professional license/registration number, issuing institution, and specialty, plus records of tickets you claim and the clinical notes you write.<br /><br /><strong>What we don't collect:</strong> we don't ask your name or any ID as a client. We do not currently verify age - if you're under 18, please involve a parent or guardian; we don't yet have a way to collect the parental consent Cameroonian law requires for a minor's data, and this is a real, acknowledged gap.",
-    fr: "<strong>Si vous vous enregistrez en tant que client :</strong> votre numéro de téléphone ; les informations de santé que vous fournissez (début, localisation, durée, caractère, facteurs aggravants/soulageants, fréquence, gravité, et tout autre élément que vous écrivez) ; un code généré automatiquement pour retrouver votre ticket plus tard (aucun compte, nom ou e-mail requis) ; la référence de transaction mobile money que vous soumettez lors du paiement (nous n'avons jamais accès aux détails de votre compte mobile money lui-même).<br /><br /><strong>Si vous vous inscrivez en tant que membre du personnel :</strong> votre nom, e-mail, mot de passe, numéro de licence/d'enregistrement professionnel, établissement émetteur et spécialité, ainsi que les dossiers des tickets que vous prenez en charge et les notes cliniques que vous rédigez.<br /><br /><strong>Ce que nous ne collectons pas :</strong> nous ne demandons ni votre nom ni aucune pièce d'identité en tant que client. Nous ne vérifions pas actuellement l'âge - si vous avez moins de 18 ans, veuillez impliquer un parent ou tuteur ; nous n'avons pas encore de moyen de recueillir le consentement parental exigé par la loi camerounaise pour les données d'un mineur, et il s'agit d'une lacune réelle et reconnue.",
-  },
-  "privacy.howWeUseTitle": { en: "How we use your information", fr: "Comment nous utilisons vos informations" },
-  "privacy.howWeUseBody": {
-    en: "Your check-in is shown to the professional who claims your ticket. They write you a separate, plain-language summary - your full clinical notes stay internal to staff and admin, never shown to you in raw form. Your phone and code are used only for your own lookups and for admin follow-up on cases needing attention. Payment references are used only to confirm and activate your consultation.",
-    fr: "Votre enregistrement est montré au professionnel qui prend en charge votre ticket. Il/elle vous rédige un résumé séparé, en langage simple - vos notes cliniques complètes restent internes au personnel et aux administrateurs, et ne vous sont jamais montrées telles quelles. Votre téléphone et votre code sont utilisés uniquement pour vos propres vérifications et pour le suivi administratif des cas nécessitant une attention particulière. Les références de paiement sont utilisées uniquement pour confirmer et activer votre consultation.",
-  },
-  "privacy.whoCanSeeTitle": { en: "Who can see your information", fr: "Qui peut voir vos informations" },
-  "privacy.whoCanSeeBody": {
-    en: "The staff member who claims your ticket, and platform admins. No other client and no unverified staff can see it. Clinical notes are restricted at the database level to the writing staff member and admins - enforced technically, not just promised. We do not sell your data or share it for advertising.",
-    fr: "Le membre du personnel qui prend en charge votre ticket, ainsi que les administrateurs de la plateforme. Aucun autre client ni aucun membre du personnel non vérifié ne peut les voir. Les notes cliniques sont restreintes au niveau de la base de données au membre du personnel rédacteur et aux administrateurs - une restriction appliquée techniquement, pas seulement promise. Nous ne vendons pas vos données et ne les partageons pas à des fins publicitaires.",
-  },
-  "privacy.whereStoredTitle": { en: "Where your information is stored", fr: "Où vos informations sont stockées" },
-  "privacy.whereStoredBody": {
-    en: "We use Supabase, a third-party database provider - your data is likely stored outside Cameroon. Cross-border transfer requires separate Data Protection Authority authorization, which has not yet been obtained. We're working to confirm and formalize this.",
-    fr: "Nous utilisons Supabase, un fournisseur tiers de base de données - vos données sont probablement stockées hors du Cameroun. Le transfert transfrontalier nécessite une autorisation distincte de l'Autorité de Protection des Données, qui n'a pas encore été obtenue. Nous travaillons à confirmer et formaliser cela.",
-  },
-  "privacy.howLongTitle": { en: "How long we keep it", fr: "Combien de temps nous les conservons" },
-  "privacy.howLongBody": { en: "We have not yet set a formal retention policy. Until we do, assume records are retained indefinitely - this is an open item toward full compliance.", fr: "Nous n'avons pas encore établi de politique de conservation formelle. En attendant, considérez que les dossiers sont conservés indéfiniment - c'est un point en suspens vers une conformité complète." },
-  "privacy.yourRightsTitle": { en: "Your rights", fr: "Vos droits" },
-  "privacy.yourRightsBody": { en: "You have the right to know what we hold about you, request correction, and request deletion. Contact: mangwishihycentanda@gmail.com.", fr: "Vous avez le droit de savoir ce que nous détenons à votre sujet, de demander une correction, et de demander une suppression. Contact : mangwishihycentanda@gmail.com." },
-  "privacy.paymentsTitle": { en: "Payments", fr: "Paiements" },
-  "privacy.paymentsBody": { en: "We don't process mobile money automatically. You send money directly via mobile money, then tell us the reference - we never have access to your mobile money account, PIN, or balance.", fr: "Nous ne traitons pas automatiquement le mobile money. Vous envoyez l'argent directement via mobile money, puis vous nous communiquez la référence - nous n'avons jamais accès à votre compte mobile money, à votre code PIN, ou à votre solde." },
-  "privacy.changesTitle": { en: "Changes", fr: "Modifications" },
-  "privacy.changesBody": { en: "We'll update this as our practices change, especially once formal authorization is obtained.", fr: "Nous mettrons à jour ce document à mesure que nos pratiques évoluent, en particulier une fois l'autorisation formelle obtenue." },
-
-  // --------------------------------------------------------------------
-  // TERMS OF SERVICE
-  // --------------------------------------------------------------------
-  "terms.title": { en: "Terms of Service", fr: "Conditions d'utilisation" },
-  "terms.lastUpdated": { en: "Last updated: September 2026", fr: "Dernière mise à jour : septembre 2026" },
-  "terms.whatIsTitle": { en: "What Ticket-In is - and isn't", fr: "Ce qu'est Ticket-In - et ce qu'il n'est pas" },
-  "terms.whatIsBody": {
-    en: "Ticket-In connects clients with independent, freelance healthcare professionals. <strong>Ticket-In is not an emergency service and does not replace in-person or emergency medical care.</strong> If you're experiencing a life-threatening emergency, go to the nearest hospital or call emergency services immediately.<br /><br />Ticket-In is a platform, not a healthcare provider. Professionals using it operate independently, not as our employees or agents. Clinical judgment and treatment decisions are made independently by the professional handling your case.",
-    fr: "Ticket-In met en relation des clients avec des professionnels de santé indépendants. <strong>Ticket-In n'est pas un service d'urgence et ne remplace pas les soins médicaux en personne ou d'urgence.</strong> Si vous vivez une urgence pouvant mettre votre vie en danger, rendez-vous immédiatement à l'hôpital le plus proche ou appelez les services d'urgence.<br /><br />Ticket-In est une plateforme, et non un prestataire de soins de santé. Les professionnels qui l'utilisent exercent de manière indépendante, et non en tant que nos employés ou agents. Le jugement clinique et les décisions de traitement sont pris de manière indépendante par le professionnel qui traite votre dossier.",
-  },
-  "terms.whoCanUseTitle": { en: "Who can use Ticket-In", fr: "Qui peut utiliser Ticket-In" },
-  "terms.whoCanUseBody": {
-    en: "We don't currently verify client age. If you're under 18, please have a parent or guardian aware of or assisting with your use of this service.<br /><br />Staff must provide accurate license/registration information. Providing false credentials is a serious violation and may lead to suspension and reporting to the relevant licensing body (e.g. the Cameroon Medical Council or the Ordre National des Infirmiers, Infirmières et Sages-Femmes du Cameroun). Admin verification is a good-faith review of what you provide, not yet independent real-time confirmation against the issuing institution.",
-    fr: "Nous ne vérifions pas actuellement l'âge des clients. Si vous avez moins de 18 ans, veuillez faire en sorte qu'un parent ou tuteur soit informé de votre utilisation de ce service, ou vous y assiste.<br /><br />Le personnel doit fournir des informations de licence/d'enregistrement exactes. Fournir de faux justificatifs constitue une violation grave et peut entraîner une suspension ainsi qu'un signalement à l'organisme d'agrément compétent (par exemple, le Conseil National de l'Ordre des Médecins du Cameroun ou l'Ordre National des Infirmiers, Infirmières et Sages-Femmes du Cameroun). La vérification par l'administrateur est un examen de bonne foi des informations que vous fournissez, et ne constitue pas encore une confirmation indépendante en temps réel auprès de l'établissement émetteur.",
-  },
-  "terms.howServiceWorksTitle": { en: "How the service works", fr: "Comment fonctionne le service" },
-  "terms.howServiceWorksBody": {
-    en: "1) Check in and receive a code. 2) Submit payment (1,600 XAF) via manual mobile money. 3) Once admin confirms payment, a verified staff member can claim your consultation. 4) They provide the consultation, then write you a plain-language summary and separate clinical notes for our records.",
-    fr: "1) Enregistrez-vous et recevez un code. 2) Envoyez le paiement (1 600 XAF) via mobile money manuel. 3) Une fois que l'administrateur confirme le paiement, un membre du personnel vérifié peut prendre en charge votre consultation. 4) Il/elle assure la consultation, puis vous rédige un résumé en langage simple ainsi que des notes cliniques distinctes pour nos dossiers.",
-  },
-  "terms.paymentsTitle": { en: "Payments", fr: "Paiements" },
-  "terms.paymentsBody": {
-    en: "1,600 XAF per consultation, manual mobile money, confirmed by admin - there may be a delay while this happens. We don't currently offer refunds for claimed/completed consultations; contact us if a payment issue occurs before claiming.",
-    fr: "1 600 XAF par consultation, mobile money manuel, confirmé par un administrateur - un délai peut s'écouler pendant cette confirmation. Nous n'offrons pas actuellement de remboursement pour les consultations prises en charge/terminées ; contactez-nous si un problème de paiement survient avant la prise en charge.",
-  },
-  "terms.clinicalSafetyTitle": { en: "Clinical safety and independence", fr: "Sécurité clinique et indépendance" },
-  "terms.clinicalSafetyBody": {
-    en: "Clinical decisions are made independently, never influenced by platform commercial interests. We don't incentivize unnecessary consultations, referrals, or purchases. High-severity check-ins are flagged internally for admin follow-up - this is a safety aid, not a guarantee of rapid response, and never a substitute for seeking emergency care directly.",
-    fr: "Les décisions cliniques sont prises de manière indépendante, jamais influencées par les intérêts commerciaux de la plateforme. Nous n'incitons pas à des consultations, orientations ou achats inutiles. Les enregistrements de forte gravité sont signalés en interne pour un suivi par un administrateur - il s'agit d'une aide à la sécurité, non d'une garantie de réponse rapide, et jamais d'un substitut à la recherche directe de soins d'urgence.",
-  },
-  "terms.liabilityTitle": { en: "Limitation of liability", fr: "Limitation de responsabilité" },
-  "terms.liabilityBody": {
-    en: "Ticket-In is not a party to the clinical relationship between you and the professional you consult. To the fullest extent permitted by law, we are not liable for clinical decisions, advice, or outcomes - that responsibility rests with the professional providing care. This doesn't affect any rights you have under Cameroonian law that can't be excluded by these Terms.",
-    fr: "Ticket-In n'est pas partie à la relation clinique entre vous et le professionnel que vous consultez. Dans toute la mesure permise par la loi, nous ne sommes pas responsables des décisions cliniques, conseils ou résultats - cette responsabilité incombe au professionnel qui dispense les soins. Cela n'affecte aucun droit dont vous disposez en vertu du droit camerounais et qui ne peut être exclu par les présentes Conditions.",
-  },
-  "terms.governingLawTitle": { en: "Governing law", fr: "Droit applicable" },
-  "terms.governingLawBody": { en: "These Terms are governed by the laws of the Republic of Cameroon.", fr: "Les présentes Conditions sont régies par les lois de la République du Cameroun." },
-  "terms.contactTitle": { en: "Contact", fr: "Contact" },
-  "terms.contactBody": { en: "Questions: mangwishihycentanda@gmail.com.", fr: "Questions : mangwishihycentanda@gmail.com." },
+const C = {
+  navy: "#0D2B3E", teal: "#1E7A6F", tealL: "#E4F3F0", tealB: "#9CCFC5",
+  gold: "#C9A34E",
+  ink: "#1A1A1A", body: "#3A3A3A", muted: "#767676",
+  bg: "#F7F9F9", surf: "#EFF3F3", white: "#FFFFFF", border: "#E1E6E6",
+  green: "#1E6E42", greenL: "#EAF6EE", greenB: "#7EC8A0",
+  red: "#B82818", redL: "#FDECEA", redB: "#E0907E",
 };
 
-export function makeT(lang) {
-  return (key, vars) => {
-    let s = (translations[key] && translations[key][lang]) || (translations[key] && translations[key].en) || key;
-    if (vars) for (const k in vars) s = s.replaceAll("{" + k + "}", vars[k]);
-    return s;
+const PLAN_AMOUNT = 1600;
+
+// ============================================================================
+// SHARED UI
+// ============================================================================
+export const Btn = ({ label, onClick, primary, small, full, disabled, loading }) => (
+  <button onClick={onClick} disabled={disabled || loading} style={{
+    padding: small ? "8px 14px" : "11px 18px",
+    fontSize: small ? 12 : 14, fontWeight: 700, borderRadius: 10, cursor: disabled || loading ? "default" : "pointer",
+    border: primary ? "none" : "1.5px solid " + C.border,
+    background: disabled ? C.surf : primary ? C.teal : C.white,
+    color: disabled ? C.muted : primary ? "#fff" : C.body,
+    width: full ? "100%" : "auto", fontFamily: "system-ui", opacity: loading ? 0.7 : 1,
+  }}>{loading ? "..." : label}</button>
+);
+
+export const Field = ({ label, value, onChange, type = "text", placeholder, rows, required }) => (
+  <div style={{ marginBottom: 14 }}>
+    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+      {label}{required && <span style={{ color: C.red }}> *</span>}
+    </label>
+    {rows ? (
+      <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+        style={{ width: "100%", padding: "10px 12px", fontSize: 14, borderRadius: 9, border: "1.5px solid " + C.border, fontFamily: "system-ui", outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+    ) : (
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+        style={{ width: "100%", padding: "10px 12px", fontSize: 14, borderRadius: 9, border: "1.5px solid " + C.border, fontFamily: "system-ui", outline: "none", boxSizing: "border-box" }} />
+    )}
+  </div>
+);
+
+export const Tag = ({ children, kind }) => {
+  const kinds = {
+    open: [C.teal, C.tealL], claimed: [C.gold, "#FBF0D6"], in_progress: [C.gold, "#FBF0D6"],
+    resolved: [C.green, C.greenL], form_submitted: [C.muted, C.surf], expired: [C.red, C.redL],
+    pending: [C.gold, "#FBF0D6"], completed: [C.green, C.greenL], failed: [C.red, C.redL],
+    verified: [C.green, C.greenL],
   };
+  const [fg, bg] = kinds[kind] || [C.muted, C.surf];
+  return <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, fontSize: 10, fontWeight: 700, color: fg, background: bg, textTransform: "uppercase", letterSpacing: ".04em" }}>{children}</span>;
+};
+
+const Toast = ({ msg, ok, show }) => !show ? null : (
+  <div style={{ position: "fixed", top: 14, right: 14, zIndex: 600, padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700, boxShadow: "0 4px 16px rgba(0,0,0,.12)", background: ok ? C.greenL : C.redL, border: "1px solid " + (ok ? C.greenB : C.redB), color: ok ? C.green : C.red }}>
+    {msg}
+  </div>
+);
+
+const Modal = ({ open, onClose, title, children }) => !open ? null : (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+    <div style={{ background: C.white, borderRadius: 16, padding: 22, maxWidth: 460, width: "100%", maxHeight: "88vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 17, fontWeight: 800 }}>{title}</div>
+        <button onClick={onClose} style={{ background: C.surf, border: "none", width: 30, height: 30, borderRadius: 8, cursor: "pointer", fontSize: 15 }}>x</button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// Small EN/FR language toggle, reused on every screen (top-right of the
+// account-free screens, and in the main app shell's sidebar).
+export const LangToggle = ({ lang, setLang, style }) => (
+  <div style={{ display: "inline-flex", border: "1.5px solid " + C.border, borderRadius: 8, overflow: "hidden", ...style }}>
+    {["en", "fr"].map(code => (
+      <button key={code} onClick={() => setLang(code)} style={{
+        padding: "4px 9px", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui", border: "none",
+        background: lang === code ? C.teal : C.white, color: lang === code ? "#fff" : C.muted,
+      }}>{code.toUpperCase()}</button>
+    ))}
+  </div>
+);
+
+// Field keys are looked up via t() at render time so labels/placeholders
+// follow the active language; only the field key (used for form state and
+// the underlying DB column) stays fixed here.
+const OLDCART_FIELD_KEYS = ["onset", "location", "duration", "character", "aggravating_factors", "relieving_factors", "timing"];
+
+// ============================================================================
+// PRIVACY POLICY / TERMS OF SERVICE - rendered in-app, mirrors
+// PRIVACY_POLICY.md / TERMS_OF_SERVICE.md in the repo. Kept as plain
+// components (not markdown-parsed from the .md files) so there's no
+// build-time dependency on reading a file - if you edit the wording,
+// update both this and the .md file to keep them in sync.
+// ============================================================================
+// Human-readable elapsed time since a ticket was submitted - lets staff
+// see at a glance which tickets have been waiting longest, without
+// having to read and mentally subtract a timestamp.
+function timeAgo(dateString, lang = "en") {
+  const tr = makeT(lang);
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return tr("time.justNow");
+  if (mins < 60) return tr("time.minAgo", { m: mins });
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return tr("time.hourMinAgo", { h: hours, m: mins % 60 });
+  const days = Math.floor(hours / 24);
+  return tr("time.dayHourAgo", { d: days, h: hours % 24 });
+}
+
+const Sec = ({ title, children }) => (
+  <div style={{ marginBottom: 18 }}>
+    {title && <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginBottom: 6 }}>{title}</div>}
+    <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>{children}</div>
+  </div>
+);
+
+function PrivacyPolicyContent({ lang }) {
+  const t = makeT(lang);
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{t("privacy.title")}</div>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 20 }}>{t("privacy.lastUpdated")}</div>
+
+      <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 12, color: C.body, lineHeight: 1.6 }}>
+        {t("privacy.interimNotice")}
+      </div>
+
+      <Sec title={t("privacy.whoWeAreTitle")}>{t("privacy.whoWeAreBody")}</Sec>
+
+      <Sec title={t("privacy.whatWeCollectTitle")}>
+        <span dangerouslySetInnerHTML={{ __html: t("privacy.whatWeCollectBody") }} />
+      </Sec>
+
+      <Sec title={t("privacy.howWeUseTitle")}>{t("privacy.howWeUseBody")}</Sec>
+
+      <Sec title={t("privacy.whoCanSeeTitle")}>{t("privacy.whoCanSeeBody")}</Sec>
+
+      <Sec title={t("privacy.whereStoredTitle")}>{t("privacy.whereStoredBody")}</Sec>
+
+      <Sec title={t("privacy.howLongTitle")}>{t("privacy.howLongBody")}</Sec>
+
+      <Sec title={t("privacy.yourRightsTitle")}>{t("privacy.yourRightsBody")}</Sec>
+
+      <Sec title={t("privacy.paymentsTitle")}>{t("privacy.paymentsBody")}</Sec>
+
+      <Sec title={t("privacy.changesTitle")}>{t("privacy.changesBody")}</Sec>
+    </div>
+  );
+}
+
+function TermsOfServiceContent({ lang }) {
+  const t = makeT(lang);
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{t("terms.title")}</div>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 20 }}>{t("terms.lastUpdated")}</div>
+
+      <Sec title={t("terms.whatIsTitle")}>
+        <span dangerouslySetInnerHTML={{ __html: t("terms.whatIsBody") }} />
+      </Sec>
+
+      <Sec title={t("terms.whoCanUseTitle")}>
+        <span dangerouslySetInnerHTML={{ __html: t("terms.whoCanUseBody") }} />
+      </Sec>
+
+      <Sec title={t("terms.howServiceWorksTitle")}>{t("terms.howServiceWorksBody")}</Sec>
+
+      <Sec title={t("terms.paymentsTitle")}>{t("terms.paymentsBody")}</Sec>
+
+      <Sec title={t("terms.clinicalSafetyTitle")}>{t("terms.clinicalSafetyBody")}</Sec>
+
+      <Sec title={t("terms.liabilityTitle")}>{t("terms.liabilityBody")}</Sec>
+
+      <Sec title={t("terms.governingLawTitle")}>{t("terms.governingLawBody")}</Sec>
+
+      <Sec title={t("terms.contactTitle")}>{t("terms.contactBody")}</Sec>
+    </div>
+  );
+}
+
+
+const EMPTY_TICKET_FORM = { onset: "", location: "", duration: "", character: "", aggravating_factors: "", relieving_factors: "", timing: "", severity_description: "", additional_notes: "" };
+const EMERGENCY_THRESHOLD = 8; // severity_level at or above this triggers urgent flagging + emergency messaging
+
+export default function App() {
+  // screen: landing | checkin | checkin-code | lookup | auth | app
+  // "checkin"/"checkin-code"/"lookup" are account-free, top-level, for clients.
+  // "auth"/"app" are for staff/admin only - clients never log in at all.
+  const [screen, setScreen] = useState("landing");
+  const [isReg, setIsReg] = useState(true);
+  const [authRole, setAuthRole] = useState("staff"); // "staff" | "hospital" - which kind of account is being registered
+  const [authName, setAuthName] = useState(""), [authEmail, setAuthEmail] = useState(""), [authPass, setAuthPass] = useState("");
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [issuingInstitution, setIssuingInstitution] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [hospitalName, setHospitalName] = useState("");
+  const [hospitalTown, setHospitalTown] = useState("");
+  const [hospitalPhone, setHospitalPhone] = useState("");
+  const [hospitalAddress, setHospitalAddress] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [user, setUser] = useState(null);
+  const [page, setPage] = useState("staffboard");
+  const [toast, setToast] = useState({ show: false, msg: "", ok: true });
+
+  const [lang, setLang] = useState(() => { try { return localStorage.getItem("ti_lang") || "en"; } catch { return "en"; } });
+  useEffect(() => { try { localStorage.setItem("ti_lang", lang); } catch {} }, [lang]);
+  const t = makeT(lang);
+
+  function notify(msg, ok = true) {
+    setToast({ show: true, msg, ok });
+    setTimeout(() => setToast(t => ({ ...t, show: false })), 3200);
+  }
+
+  const isStaff = user && user.role === "staff";
+  const isAdmin = user && user.role === "admin";
+  const isHospital = user && user.role === "hospital";
+
+  // -- HOSPITALS - shared list, used by the client check-in dropdown and
+  // the staff sign-up's optional "affiliated hospital" picker. Public/
+  // anon-readable (RLS only returns hospitals whose account is verified).
+  const [hospitalsList, setHospitalsList] = useState([]);
+  async function loadHospitals() {
+    const { data } = await supabase.from("hospitals").select("id, name, town").order("town", { ascending: true });
+    if (data) setHospitalsList(data);
+  }
+
+  // -- AUTH (staff/admin only) --
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!active) return;
+      if (session?.user) { await loadProfileIntoUser(session.user); setScreen("app"); }
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!active) return;
+      if (event === "SIGNED_OUT") { setUser(null); setScreen("landing"); }
+      else if (event === "PASSWORD_RECOVERY") { setScreen("reset-password"); }
+      else if (session?.user) { await loadProfileIntoUser(session.user); setScreen("app"); }
+    });
+    return () => { active = false; listener?.subscription?.unsubscribe(); };
+  }, []);
+
+  async function loadProfileIntoUser(authUser) {
+    const { data: profile, error } = await supabase.from("profiles")
+      .select("name, role, staff_verification_status, hospital_id").eq("id", authUser.id).single();
+    if (error) {
+      const name = authUser.email.split("@")[0];
+      setUser({ id: authUser.id, name, role: "staff" });
+      setPage("staffboard");
+      return;
+    }
+    setUser({ id: authUser.id, name: profile.name || authUser.email.split("@")[0], role: profile.role, staff_verification_status: profile.staff_verification_status, hospital_id: profile.hospital_id });
+    if (profile.role === "admin") setPage("admin");
+    else if (profile.role === "hospital") setPage("hospital");
+    else setPage("staffboard");
+  }
+
+  async function handleAuth() {
+    if (!authEmail || !authPass) { notify(t("auth.err.emailPasswordRequired"), false); return; }
+    if (isReg && authPass.length < 8) { notify(t("auth.err.passwordMin8"), false); return; }
+    if (isReg && authRole === "staff" && (!licenseNumber.trim() || !issuingInstitution.trim())) {
+      notify(t("auth.err.licenseInstitutionRequired"), false); return;
+    }
+    if (isReg && authRole === "hospital" && (!hospitalName.trim() || !hospitalTown.trim())) {
+      notify(t("auth.err.hospitalNameTownRequired"), false); return;
+    }
+    setAuthBusy(true);
+    if (isReg) {
+      if (!authName.trim()) { setAuthBusy(false); notify(t("auth.err.nameRequired"), false); return; }
+      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPass, options: { data: { name: authName } } });
+      if (error) { setAuthBusy(false); notify(error.message, false); return; }
+      if (data.session) {
+        // Finalization (setting role + saving credentials/hospital details)
+        // has to happen server-side via service_role - a client-side
+        // profiles.update({role}) looks like it succeeds but is silently
+        // reverted by the self-elevation-prevention trigger, since the
+        // caller here is the user themselves, not an admin or service_role.
+        const res = await fetch("/api/finalize-registration", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.session.access_token },
+          body: JSON.stringify(
+            authRole === "staff"
+              ? { role: "staff", licenseNumber: licenseNumber.trim(), issuingInstitution: issuingInstitution.trim(), specialty: specialty.trim() || null }
+              : { role: "hospital", hospitalName: hospitalName.trim(), hospitalTown: hospitalTown.trim(), hospitalPhone: hospitalPhone.trim() || null, hospitalAddress: hospitalAddress.trim() || null }
+          ),
+        });
+        const body = await res.json();
+        if (!res.ok) { setAuthBusy(false); notify(body.error || t("auth.err.registrationNotFinalized"), false); return; }
+      } else {
+        setAuthBusy(false);
+        notify(t("auth.accountCreatedConfirmEmail"));
+        return;
+      }
+      setAuthBusy(false);
+      notify(t("auth.accountCreated"));
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPass });
+      setAuthBusy(false);
+      if (error) { notify(error.message, false); return; }
+    }
+  }
+
+  async function logout() { await supabase.auth.signOut(); }
+
+  // -- PASSWORD RESET --
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  async function requestPasswordReset() {
+    if (!resetEmail.trim()) { notify(t("reset.err.enterEmailFirst"), false); return; }
+    setResetBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), { redirectTo: window.location.origin });
+    setResetBusy(false);
+    // Deliberately the same message whether or not the email exists -
+    // confirming/denying an account's existence to an unauthenticated
+    // caller is an account-enumeration leak.
+    if (error) notify(error.message, false);
+    else setResetSent(true);
+  }
+
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordBusy, setNewPasswordBusy] = useState(false);
+  async function submitNewPassword() {
+    if (newPassword.length < 8) { notify(t("auth.err.passwordMin8"), false); return; }
+    setNewPasswordBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setNewPasswordBusy(false);
+    if (error) { notify(error.message, false); return; }
+    setNewPassword("");
+    notify(t("reset.passwordUpdated"));
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) { await loadProfileIntoUser(session.user); setScreen("app"); }
+    else setScreen("landing");
+  }
+
+  // ==========================================================================
+  // CLIENT CHECK-IN - account-free. Identified by phone + a system-
+  // generated client_code shown once on screen, not by login.
+  // ==========================================================================
+  const [ticketForm, setTicketForm] = useState(EMPTY_TICKET_FORM);
+  const [checkinPhone, setCheckinPhone] = useState("");
+  const [consultType, setConsultType] = useState("remote"); // "remote" | "in_person"
+  const [selectedHospitalId, setSelectedHospitalId] = useState("");
+  const [isAdult, setIsAdult] = useState(null); // null = not yet answered, true/false
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianPhone, setGuardianPhone] = useState("");
+  const [severityLevel, setSeverityLevel] = useState(null);
+  const [emergencyAck, setEmergencyAck] = useState(false);
+  const [showEmergencyWarning, setShowEmergencyWarning] = useState(false);
+  const [ticketBusy, setTicketBusy] = useState(false);
+  const [pendingTicketId, setPendingTicketId] = useState(null);
+  const [clientCode, setClientCode] = useState(null);
+  const [showPay, setShowPay] = useState(false);
+  const [momoDetails, setMomoDetails] = useState(null);
+  const [momoDetailsError, setMomoDetailsError] = useState("");
+  const [momoCopied, setMomoCopied] = useState(false);
+  const [momoRef, setMomoRef] = useState("");
+  const [momoBusy, setMomoBusy] = useState(false);
+
+  // Refs so a failed validation can scroll the user straight to the
+  // actual unanswered field, instead of just showing a toast that gives
+  // no indication of where on a long form the problem is.
+  const emergencyAckRef = useRef(null);
+  const phoneRef = useRef(null);
+  const onsetSeverityRef = useRef(null);
+  const ageRef = useRef(null);
+  const guardianRef = useRef(null);
+  const hospitalRef = useRef(null);
+
+  function scrollToField(ref) {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  async function submitCheckIn() {
+    if (!emergencyAck) { notify(t("checkin.err.readEmergencyNotice"), false); scrollToField(emergencyAckRef); return; }
+    if (!checkinPhone.trim()) { notify(t("checkin.err.enterPhone"), false); scrollToField(phoneRef); return; }
+    if (!ticketForm.onset.trim() || !severityLevel) { notify(t("checkin.err.onsetSeverityRequired"), false); scrollToField(onsetSeverityRef); return; }
+    if (isAdult === null) { notify(t("checkin.err.confirmAge"), false); scrollToField(ageRef); return; }
+    if (isAdult === false && (!guardianName.trim() || !guardianPhone.trim())) {
+      notify(t("checkin.err.guardianRequired"), false); scrollToField(guardianRef); return;
+    }
+    if (consultType === "in_person" && !selectedHospitalId) {
+      notify(t("checkin.err.chooseHospital"), false); scrollToField(hospitalRef); return;
+    }
+
+    setTicketBusy(true);
+    try {
+      const res = await fetch("/api/submit-checkin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: checkinPhone.trim(), ...ticketForm, severity_level: severityLevel, emergency_disclaimer_acknowledged: true,
+          is_adult: isAdult, guardian_name: isAdult ? null : guardianName.trim(), guardian_phone: isAdult ? null : guardianPhone.trim(),
+          consult_type: consultType, hospital_id: consultType === "in_person" ? selectedHospitalId : null,
+        }),
+      });
+      const body = await res.json();
+      setTicketBusy(false);
+      if (!res.ok) { notify(body.error || t("checkin.err.submitFailed"), false); return; }
+      setPendingTicketId(body.ticketId);
+      setClientCode(body.clientCode);
+      if (severityLevel >= EMERGENCY_THRESHOLD) setShowEmergencyWarning(true);
+      else setScreen("checkin-code");
+    } catch (e) {
+      setTicketBusy(false);
+      notify(t("checkin.err.submitFailedWithError", { error: e.message }), false);
+    }
+  }
+
+  async function openPayment() {
+    setMomoDetailsError("");
+    if (momoDetails) return;
+    try {
+      const res = await fetch("/api/get-momo-details", { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) { setMomoDetailsError(body.error || t("checkincode.err.paymentDetailsFailed")); return; }
+      setMomoDetails(body);
+    } catch (e) { setMomoDetailsError(t("checkincode.err.paymentDetailsFailedWithError", { error: e.message })); }
+  }
+  useEffect(() => { if (showPay) openPayment(); }, [showPay]);
+
+  async function copyMomoNumber() {
+    if (!momoDetails) return;
+    try { await navigator.clipboard.writeText(momoDetails.momoNumber); setMomoCopied(true); setTimeout(() => setMomoCopied(false), 2000); }
+    catch { notify(t("checkincode.err.copyLongPress"), false); }
+  }
+  async function copyClientCode() {
+    if (!clientCode) return;
+    try { await navigator.clipboard.writeText(clientCode); notify(t("checkincode.codeCopied")); }
+    catch { notify(t("checkincode.err.copyWriteDown"), false); }
+  }
+
+  async function submitPayment() {
+    if (!momoRef.trim()) { notify(t("checkincode.err.enterReference"), false); return; }
+    setMomoBusy(true);
+    try {
+      const res = await fetch("/api/submit-checkin-payment", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId: pendingTicketId, phone: checkinPhone.trim(), code: clientCode, referenceNote: momoRef.trim() }),
+      });
+      const body = await res.json();
+      setMomoBusy(false);
+      if (!res.ok) { notify(body.error || t("checkincode.err.submitPaymentFailed"), false); return; }
+      notify(t("checkincode.paymentSubmitted"));
+      setShowPay(false); setMomoRef(""); setMomoDetails(null);
+      setScreen("landing");
+      setTicketForm(EMPTY_TICKET_FORM); setSeverityLevel(null); setEmergencyAck(false);
+      setIsAdult(null); setGuardianName(""); setGuardianPhone("");
+      setConsultType("remote"); setSelectedHospitalId("");
+      setPendingTicketId(null); setClientCode(null); setCheckinPhone("");
+    } catch (e) {
+      setMomoBusy(false);
+      notify(t("checkincode.err.submitPaymentFailedWithError", { error: e.message }), false);
+    }
+  }
+
+  // -- LOOKUP (account-free ticket status check) --
+  const [lookupPhone, setLookupPhone] = useState("");
+  const [lookupCode, setLookupCode] = useState("");
+  const [lookupResult, setLookupResult] = useState(null);
+  const [lookupError, setLookupError] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+
+  async function doLookup() {
+    if (!lookupPhone.trim() || !lookupCode.trim()) { setLookupError(t("lookup.enterBoth")); return; }
+    setLookupBusy(true); setLookupError(""); setLookupResult(null);
+    try {
+      const res = await fetch("/api/lookup-ticket", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: lookupPhone.trim(), code: lookupCode.trim() }),
+      });
+      const body = await res.json();
+      setLookupBusy(false);
+      if (!res.ok) { setLookupError(body.error || t("lookup.notFound")); return; }
+      setLookupResult(body.ticket);
+    } catch (e) {
+      setLookupBusy(false);
+      setLookupError(t("lookup.checkFailed", { error: e.message }));
+    }
+  }
+
+  // ==========================================================================
+  // STAFF: OPEN TICKETS + CLAIMED
+  // ==========================================================================
+  const [openTickets, setOpenTickets] = useState([]);
+  const [myClaimed, setMyClaimed] = useState([]);
+  async function loadStaffBoard() {
+    const [open, claimed] = await Promise.all([
+      supabase.from("tickets").select("*").eq("status", "open").order("created_at", { ascending: true }),
+      supabase.from("tickets").select("*").eq("claimed_by", user.id).order("claimed_at", { ascending: false }),
+    ]);
+    if (open.data) setOpenTickets(open.data);
+    if (claimed.data) setMyClaimed(claimed.data);
+  }
+
+  async function claimTicket(ticketId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/claim-ticket", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ ticketId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { notify(body.error || t("staff.err.claimFailed"), false); loadStaffBoard(); return; }
+    notify(t("staff.ticketClaimed"));
+    loadStaffBoard();
+  }
+
+  async function startConsultation(ticketId) {
+    const { error } = await supabase.from("tickets").update({ status: "in_progress" }).eq("id", ticketId).eq("claimed_by", user.id);
+    if (error) { notify(t("common.couldNotUpdate", { error: error.message }), false); return; }
+    notify(t("staff.consultationStarted"));
+    loadStaffBoard();
+  }
+
+  const [resolveNotes, setResolveNotes] = useState({ objective_assessment: "", clinical_diagnosis: "", plan: "", implementation: "", evaluation: "" });
+  const [resolveSummary, setResolveSummary] = useState("");
+  const [resolvingTicket, setResolvingTicket] = useState(null);
+
+  // -- STAFF FORUM --
+  const [forumPosts, setForumPosts] = useState([]);
+  const [forumLoading, setForumLoading] = useState(false);
+  const [newThreadSubject, setNewThreadSubject] = useState("");
+  const [newThreadBody, setNewThreadBody] = useState("");
+  const [expandedThread, setExpandedThread] = useState(null);
+  const [replyBody, setReplyBody] = useState("");
+
+  async function loadForum() {
+    setForumLoading(true);
+    const { data, error } = await supabase.from("forum_posts").select("*").order("created_at", { ascending: false });
+    if (!error && data) setForumPosts(data);
+    setForumLoading(false);
+  }
+  async function submitThread() {
+    if (!newThreadBody.trim()) { notify(t("forum.err.writeSomething"), false); return; }
+    const { error } = await supabase.from("forum_posts").insert({
+      staff_id: user.id, staff_name: user.name, subject: newThreadSubject.trim() || null, body: newThreadBody.trim(), parent_post_id: null,
+    });
+    if (error) { notify(t("forum.err.postFailed", { error: error.message }), false); return; }
+    setNewThreadSubject(""); setNewThreadBody("");
+    loadForum();
+  }
+  async function submitReply(parentId) {
+    if (!replyBody.trim()) return;
+    const { error } = await supabase.from("forum_posts").insert({
+      staff_id: user.id, staff_name: user.name, parent_post_id: parentId, body: replyBody.trim(),
+    });
+    if (error) { notify(t("forum.err.replyFailed", { error: error.message }), false); return; }
+    setReplyBody(""); setExpandedThread(null);
+    loadForum();
+  }
+  async function deleteForumPost(id) {
+    if (!confirm(t("forum.confirmRemovePost"))) return;
+    const { error } = await supabase.from("forum_posts").update({ is_deleted: true }).eq("id", id);
+    if (error) { notify(t("common.couldNotRemove", { error: error.message }), false); return; }
+    loadForum();
+  }
+
+  // -- RESOURCES --
+  const [resources, setResources] = useState([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [newResTitle, setNewResTitle] = useState("");
+  const [newResCategory, setNewResCategory] = useState("");
+  const [newResDesc, setNewResDesc] = useState("");
+  const [newResLink, setNewResLink] = useState("");
+  const [newResText, setNewResText] = useState("");
+  const [showAddResource, setShowAddResource] = useState(false);
+
+  async function loadResources() {
+    setResourcesLoading(true);
+    const { data, error } = await supabase.from("resources").select("*").order("created_at", { ascending: false });
+    if (!error && data) setResources(data);
+    setResourcesLoading(false);
+  }
+  async function submitResource() {
+    if (!newResTitle.trim()) { notify(t("resources.err.titleRequired"), false); return; }
+    if (!newResLink.trim() && !newResText.trim()) { notify(t("resources.err.linkOrTextRequired"), false); return; }
+    const { error } = await supabase.from("resources").insert({
+      title: newResTitle.trim(), category: newResCategory.trim() || null, description: newResDesc.trim() || null,
+      link_url: newResLink.trim() || null, text_content: newResText.trim() || null, created_by: user.id,
+    });
+    if (error) { notify(t("resources.err.addFailed", { error: error.message }), false); return; }
+    setNewResTitle(""); setNewResCategory(""); setNewResDesc(""); setNewResLink(""); setNewResText(""); setShowAddResource(false);
+    notify(t("resources.added"));
+    loadResources();
+  }
+  async function deleteResource(id) {
+    if (!confirm(t("resources.confirmRemove"))) return;
+    const { error } = await supabase.from("resources").delete().eq("id", id);
+    if (error) { notify(t("common.couldNotRemove", { error: error.message }), false); return; }
+    loadResources();
+  }
+
+  const [resolveBusy, setResolveBusy] = useState(false);
+  async function submitResolution() {
+    if (!resolveSummary.trim()) { notify(t("resolve.err.summaryRequired"), false); return; }
+    setResolveBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/resolve-ticket", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+        body: JSON.stringify({ ticketId: resolvingTicket, notes: resolveNotes, summary: resolveSummary.trim() }),
+      });
+      const body = await res.json();
+      setResolveBusy(false);
+      if (!res.ok) { notify(body.error || t("resolve.err.resolveFailed"), false); return; }
+      notify(t("resolve.ticketResolved"));
+      setResolvingTicket(null); setResolveSummary(""); setResolveNotes({ objective_assessment: "", clinical_diagnosis: "", plan: "", implementation: "", evaluation: "" });
+      loadStaffBoard();
+      loadMyPayouts();
+    } catch (e) {
+      setResolveBusy(false);
+      notify(t("resolve.err.resolveFailedWithError", { error: e.message }), false);
+    }
+  }
+
+  // -- STAFF: MY EARNINGS (staff_payouts, own rows only) --
+  const [myPayouts, setMyPayouts] = useState([]);
+  async function loadMyPayouts() {
+    const { data, error } = await supabase.from("staff_payouts").select("*").eq("staff_id", user.id).order("created_at", { ascending: false });
+    if (!error && data) setMyPayouts(data);
+  }
+
+  // ==========================================================================
+  // ADMIN
+  // ==========================================================================
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [pendingStaff, setPendingStaff] = useState([]);
+  const [pendingHospitals, setPendingHospitals] = useState([]);
+  const [hospitalTicketIndex, setHospitalTicketIndex] = useState([]);
+  const [pendingPayouts, setPendingPayouts] = useState([]);
+  async function loadPendingPayouts() {
+    const { data, error } = await supabase.from("staff_payouts").select("*").eq("status", "pending").order("created_at", { ascending: true });
+    if (error || !data) return;
+    const staffIds = [...new Set(data.map(p => p.staff_id))];
+    const { data: staffRows } = staffIds.length
+      ? await supabase.from("profiles").select("id, name").in("id", staffIds)
+      : { data: [] };
+    const nameById = Object.fromEntries((staffRows || []).map(s => [s.id, s.name]));
+    setPendingPayouts(data.map(p => ({ ...p, staffName: nameById[p.staff_id] || "Unknown" })));
+  }
+  async function markPayoutPaid(payoutId) {
+    const { error } = await supabase.from("staff_payouts").update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", payoutId).eq("status", "pending");
+    if (error) { notify(t("common.couldNotUpdate", { error: error.message }), false); return; }
+    notify(t("admin.markedPaid"));
+    loadPendingPayouts();
+  }
+  const [allUsers, setAllUsers] = useState([]);
+  const [ticketStats, setTicketStats] = useState(null);
+  const [phoneSearch, setPhoneSearch] = useState("");
+  const [phoneSearchResults, setPhoneSearchResults] = useState(null);
+  const [phoneSearchBusy, setPhoneSearchBusy] = useState(false);
+  const [urgentTickets, setUrgentTickets] = useState([]);
+  async function loadUrgentTickets() {
+    // Every active (not resolved/expired) urgent ticket, regardless of
+    // payment status - payment being unconfirmed should never be the
+    // reason a potentially urgent case stays invisible to a human. This
+    // is admin-only by design (staff only ever see "open" tickets via
+    // the normal board, which already excludes unpaid ones on purpose).
+    const { data, error } = await supabase.from("tickets").select("*")
+      .gte("severity_level", EMERGENCY_THRESHOLD)
+      .not("status", "in", "(resolved,expired)")
+      .order("created_at", { ascending: true });
+    if (!error && data) setUrgentTickets(data);
+  }
+  async function searchByPhone() {
+    if (!phoneSearch.trim()) { notify(t("admin.err.enterPhoneToSearch"), false); return; }
+    setPhoneSearchBusy(true);
+    const { data, error } = await supabase.from("tickets").select("*")
+      .ilike("client_phone", "%" + phoneSearch.trim() + "%")
+      .order("created_at", { ascending: false });
+    setPhoneSearchBusy(false);
+    if (error) { notify(t("admin.err.searchFailed", { error: error.message }), false); return; }
+    setPhoneSearchResults(data || []);
+  }
+  async function loadTicketStats() {
+    const { data, error } = await supabase.from("tickets").select("status, severity_level");
+    if (error) { notify(t("admin.err.statsFailed", { error: error.message }), false); return; }
+    const counts = { total: data.length, form_submitted: 0, open: 0, claimed: 0, in_progress: 0, resolved: 0, expired: 0, urgent_active: 0 };
+    data.forEach(t => {
+      if (counts[t.status] !== undefined) counts[t.status]++;
+      if (t.severity_level >= EMERGENCY_THRESHOLD && !["resolved", "expired"].includes(t.status)) counts.urgent_active++;
+    });
+    setTicketStats(counts);
+  }
+  async function loadAdmin() {
+    const [pays, staff, creds, hospitalAccounts, hospitalRows] = await Promise.all([
+      supabase.from("ticket_payments").select("*").eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("profiles").select("*").eq("role", "staff").eq("staff_verification_status", "pending"),
+      supabase.from("staff_credentials").select("*"),
+      supabase.from("profiles").select("*").eq("role", "hospital").eq("staff_verification_status", "pending"),
+      supabase.from("hospitals").select("*"),
+    ]);
+    if (pays.data) setPendingPayments(pays.data);
+    if (staff.data) {
+      const credsById = Object.fromEntries((creds.data || []).map(c => [c.staff_id, c]));
+      setPendingStaff(staff.data.map(s => ({ ...s, credentials: credsById[s.id] })));
+    }
+    if (hospitalAccounts.data) {
+      const hospitalByOwner = Object.fromEntries((hospitalRows.data || []).map(h => [h.created_by, h]));
+      setPendingHospitals(hospitalAccounts.data.map(h => ({ ...h, hospital: hospitalByOwner[h.id] })));
+    }
+  }
+  // Cross-hospital oversight index for admin - every in-person ticket,
+  // labeled with which hospital it was routed to. Complements each
+  // hospital's own single-hospital dashboard index below.
+  async function loadHospitalTicketIndex() {
+    const { data, error } = await supabase.from("tickets")
+      .select("*, hospitals(name, town)").eq("consult_type", "in_person").order("created_at", { ascending: false });
+    if (!error && data) setHospitalTicketIndex(data);
+  }
+  async function loadAllUsers() {
+    const [usersRes, credsRes, hospitalsRes] = await Promise.all([
+      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      supabase.from("staff_credentials").select("*"),
+      supabase.from("hospitals").select("*"),
+    ]);
+    if (usersRes.error) { notify(t("admin.err.loadUsersFailed", { error: usersRes.error.message }), false); return; }
+    const credsById = Object.fromEntries((credsRes.data || []).map(c => [c.staff_id, c]));
+    const hospitalByOwner = Object.fromEntries((hospitalsRes.data || []).map(h => [h.created_by, h]));
+    if (usersRes.data) setAllUsers(usersRes.data.map(u => ({ ...u, credentials: credsById[u.id], hospital: hospitalByOwner[u.id] })));
+  }
+  async function changeUserRole(userId, newRole) {
+    const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
+    if (error) { notify(t("admin.err.updateRoleFailed", { error: error.message }), false); return; }
+    notify(t("admin.roleUpdated"));
+    loadAllUsers();
+  }
+  async function changeUserVerification(userId, status) {
+    const patch = { staff_verification_status: status };
+    if (status === "verified") { patch.verified_by = user.id; patch.verified_at = new Date().toISOString(); }
+    const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
+    if (error) { notify(t("common.couldNotUpdate", { error: error.message }), false); return; }
+    notify(t("common.updated"));
+    loadAllUsers();
+  }
+  async function confirmPayment(paymentId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/confirm-payment", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ paymentId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { notify(body.error || t("admin.err.confirmPaymentFailed"), false); return; }
+    notify(t("admin.paymentConfirmed"));
+    loadAdmin();
+  }
+  async function verifyStaff(staffId, status) {
+    const patch = { staff_verification_status: status };
+    if (status === "verified") { patch.verified_by = user.id; patch.verified_at = new Date().toISOString(); }
+    const { error } = await supabase.from("profiles").update(patch).eq("id", staffId);
+    if (error) { notify(t("common.couldNotUpdate", { error: error.message }), false); return; }
+    notify(status === "verified" ? t("admin.staffVerified") : t("admin.staffRejected"));
+    loadAdmin();
+  }
+  const [deletingUserId, setDeletingUserId] = useState(null);
+  async function deleteAccount(u) {
+    if (!confirm(t("admin.confirmDeleteAccount", { name: u.name, role: t("status." + u.role) }))) return;
+    setDeletingUserId(u.id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin-delete-account", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ userId: u.id }),
+    });
+    const body = await res.json();
+    setDeletingUserId(null);
+    if (!res.ok) { notify(body.error || t("admin.err.deleteAccountFailed"), false); return; }
+    notify(t("admin.accountDeleted"));
+    loadAllUsers();
+  }
+
+  // ==========================================================================
+  // HOSPITAL DASHBOARD
+  // ==========================================================================
+  const [myHospital, setMyHospital] = useState(null);
+  const [hospitalTickets, setHospitalTickets] = useState([]);
+  const [hospitalDoctors, setHospitalDoctors] = useState([]);
+  const [doctorEmailInput, setDoctorEmailInput] = useState("");
+  const [doctorAddBusy, setDoctorAddBusy] = useState(false);
+
+  async function loadHospitalBoard() {
+    const { data: hosp } = await supabase.from("hospitals").select("*").eq("created_by", user.id).single();
+    if (!hosp) return;
+    setMyHospital(hosp);
+    const [tix, docs] = await Promise.all([
+      supabase.from("tickets").select("*").eq("hospital_id", hosp.id).order("created_at", { ascending: false }),
+      supabase.from("profiles").select("*, staff_credentials(*)").eq("hospital_id", hosp.id).eq("role", "staff"),
+    ]);
+    if (tix.data) setHospitalTickets(tix.data);
+    if (docs.data) setHospitalDoctors(docs.data);
+  }
+
+  async function addDoctorByEmail() {
+    if (!doctorEmailInput.trim()) { notify(t("hospital.err.enterDoctorEmail"), false); return; }
+    setDoctorAddBusy(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/manage-hospital-doctor", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ action: "link", doctorEmail: doctorEmailInput.trim() }),
+    });
+    const body = await res.json();
+    setDoctorAddBusy(false);
+    if (!res.ok) { notify(body.error || t("hospital.err.addDoctorFailed"), false); return; }
+    notify(body.alreadyLinked ? t("hospital.alreadyOnRoster") : t("hospital.doctorAddedToRoster", { name: body.name }));
+    setDoctorEmailInput("");
+    loadHospitalBoard();
+  }
+
+  async function removeDoctor(doctorId) {
+    if (!confirm(t("hospital.confirmRemoveDoctor"))) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/manage-hospital-doctor", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ action: "unlink", doctorId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { notify(body.error || t("hospital.err.removeDoctorFailed"), false); return; }
+    notify(t("hospital.doctorRemoved"));
+    loadHospitalBoard();
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    if (page === "staffboard" && isStaff) { loadStaffBoard(); loadMyPayouts(); }
+    if (page === "forum" && (isStaff || isAdmin)) loadForum();
+    if (page === "resources" && (isStaff || isAdmin)) loadResources();
+    if (page === "admin" && isAdmin) { loadAdmin(); loadTicketStats(); loadUrgentTickets(); loadHospitalTicketIndex(); loadPendingPayouts(); }
+    if (page === "users" && isAdmin) loadAllUsers();
+    if (page === "hospital" && isHospital) loadHospitalBoard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, user]);
+
+  useEffect(() => {
+    if (screen === "checkin" || (screen === "auth" && isReg)) loadHospitals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, isReg]);
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+  if (screen === "landing") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg }}>
+      <div style={{ background: C.navy, padding: "80px 24px", textAlign: "center", color: "#fff", position: "relative" }}>
+        <LangToggle lang={lang} setLang={setLang} style={{ position: "absolute", top: 16, right: 16 }} />
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.teal, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 14 }}>Ticket-In</div>
+        <h1 style={{ fontSize: 34, fontWeight: 800, marginBottom: 14, fontFamily: "Georgia,serif" }}>{t("landing.headline")}</h1>
+        <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", maxWidth: 460, margin: "0 auto 30px" }}>{t("landing.subtext")}</p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+          <Btn label={t("landing.checkInNow")} primary onClick={() => setScreen("checkin")} />
+          <Btn label={t("landing.checkTicketStatus")} onClick={() => setScreen("lookup")} />
+          <Btn label={t("landing.imHealthcareProfessional")} onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("staff"); }} />
+          <Btn label={t("landing.registerMyHospital")} onClick={() => { setScreen("auth"); setIsReg(true); setAuthRole("hospital"); }} />
+        </div>
+      </div>
+      <div style={{ padding: "18px 24px", textAlign: "center" }}>
+        <span onClick={() => setScreen("privacy")} style={{ color: C.muted, fontSize: 12, cursor: "pointer", marginRight: 18 }}>{t("common.privacyPolicy")}</span>
+        <span onClick={() => setScreen("terms")} style={{ color: C.muted, fontSize: 12, cursor: "pointer" }}>{t("common.termsOfService")}</span>
+      </div>
+    </div>
+  );
+
+  if (screen === "privacy" || screen === "terms") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", background: C.white, borderRadius: 16, padding: 28, position: "relative" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <button onClick={() => setScreen(user ? "app" : "landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0 }}>&larr; {t("common.back")}</button>
+          <LangToggle lang={lang} setLang={setLang} />
+        </div>
+        {screen === "privacy" ? <PrivacyPolicyContent lang={lang} /> : <TermsOfServiceContent lang={lang} />}
+      </div>
+    </div>
+  );
+
+  if (screen === "lookup") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0 }}>&larr; {t("common.back")}</button>
+          <LangToggle lang={lang} setLang={setLang} />
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{t("lookup.title")}</div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{t("lookup.subtext")}</p>
+        <Field label={t("lookup.phoneNumber")} value={lookupPhone} onChange={e => setLookupPhone(e.target.value)} required />
+        <Field label={t("lookup.yourCode")} value={lookupCode} onChange={e => setLookupCode(e.target.value.toUpperCase())} placeholder={t("lookup.codePlaceholder")} required />
+        {lookupError && <div style={{ background: C.redL, border: "1px solid " + C.redB, borderRadius: 10, padding: 12, marginBottom: 14, color: C.red, fontSize: 13 }}>{lookupError}</div>}
+        <Btn label={lookupBusy ? t("lookup.checking") : t("lookup.checkStatus")} primary full loading={lookupBusy} onClick={doLookup} />
+
+        {lookupResult && (
+          <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid " + C.surf }}>
+            <Tag kind={lookupResult.status}>{t("status." + lookupResult.status)}</Tag>
+            <div style={{ fontSize: 13, color: C.ink, marginTop: 8 }}>{lookupResult.onset}</div>
+            {lookupResult.status === "resolved" && lookupResult.resolution_summary && (
+              <div style={{ marginTop: 12, fontSize: 13, color: C.body, lineHeight: 1.6 }}>
+                <strong>{t("lookup.summaryFromProfessional")}</strong><br />{lookupResult.resolution_summary}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <Toast {...toast} />
+    </div>
+  );
+
+  if (screen === "checkin") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, padding: "24px 20px" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0 }}>&larr; {t("common.back")}</button>
+          <LangToggle lang={lang} setLang={setLang} />
+        </div>
+        <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{t("checkin.title")}</h1>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>{t("checkin.subtext")}</p>
+
+        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 6 }}>{t("checkin.notEmergencyTitle")}</div>
+          <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6 }}>
+            {t("checkin.notEmergencyBody")}
+          </div>
+        </div>
+
+        <div ref={phoneRef}>
+          <Field label={t("checkin.phoneNumber")} value={checkinPhone} onChange={e => setCheckinPhone(e.target.value)} placeholder={t("checkin.phonePlaceholder")} required />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>{t("checkin.howSeen")}</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setConsultType("remote"); setSelectedHospitalId(""); }} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: consultType === "remote" ? C.tealL : C.white, border: "1.5px solid " + (consultType === "remote" ? C.tealB : C.border), color: consultType === "remote" ? C.teal : C.body,
+            }}>{t("checkin.remoteConsultation")}</button>
+            <button onClick={() => setConsultType("in_person")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: consultType === "in_person" ? C.tealL : C.white, border: "1.5px solid " + (consultType === "in_person" ? C.tealB : C.border), color: consultType === "in_person" ? C.teal : C.body,
+            }}>{t("checkin.inPersonAtHospital")}</button>
+          </div>
+        </div>
+
+        {consultType === "in_person" && (
+          <div ref={hospitalRef} style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+              {t("checkin.chooseHospital")} <span style={{ color: C.red }}>*</span>
+            </label>
+            <select value={selectedHospitalId} onChange={e => setSelectedHospitalId(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", fontSize: 14, borderRadius: 9, border: "1.5px solid " + C.border, fontFamily: "system-ui", outline: "none", boxSizing: "border-box", background: C.white }}>
+              <option value="">{t("checkin.selectHospitalPlaceholder")}</option>
+              {hospitalsList.map(h => <option key={h.id} value={h.id}>{h.name} - {h.town}</option>)}
+            </select>
+            {hospitalsList.length === 0 && (
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{t("checkin.noHospitalsRegistered")}</div>
+            )}
+          </div>
+        )}
+
+        <div ref={ageRef} style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+            {t("checkin.areYou18")} <span style={{ color: C.red }}>*</span>
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setIsAdult(true)} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: isAdult === true ? C.tealL : C.white, border: "1.5px solid " + (isAdult === true ? C.tealB : C.border), color: isAdult === true ? C.teal : C.body,
+            }}>{t("checkin.yes18OrOlder")}</button>
+            <button onClick={() => setIsAdult(false)} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: isAdult === false ? C.tealL : C.white, border: "1.5px solid " + (isAdult === false ? C.tealB : C.border), color: isAdult === false ? C.teal : C.body,
+            }}>{t("checkin.noUnder18")}</button>
+          </div>
+        </div>
+
+        {isAdult === false && (
+          <div ref={guardianRef} style={{ background: C.tealL, border: "1.5px solid " + C.tealB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: C.body, lineHeight: 1.6, marginBottom: 12 }}>
+              {t("checkin.guardianRequiredNotice")}
+            </div>
+            <Field label={t("checkin.guardianName")} value={guardianName} onChange={e => setGuardianName(e.target.value)} required />
+            <Field label={t("checkin.guardianPhone")} value={guardianPhone} onChange={e => setGuardianPhone(e.target.value)} required />
+          </div>
+        )}
+
+        <div ref={onsetSeverityRef}>
+          {OLDCART_FIELD_KEYS.map(key => (
+            <Field key={key} label={t("checkin.field." + key + ".label")} value={ticketForm[key]} onChange={e => setTicketForm(f => ({ ...f, [key]: e.target.value }))} placeholder={t("checkin.field." + key + ".placeholder")} required={key === "onset"} />
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.body, marginBottom: 6 }}>
+            {t("checkin.severity")} <span style={{ color: C.red }}>*</span>
+            <span style={{ fontWeight: 400, color: C.muted }}> {t("checkin.severityScale")}</span>
+          </label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+              <button key={n} onClick={() => setSeverityLevel(n)} style={{
+                width: 36, height: 36, borderRadius: 8, cursor: "pointer", fontFamily: "system-ui", fontWeight: 700, fontSize: 13,
+                border: "1.5px solid " + (severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redB : C.tealB) : C.border),
+                background: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.redL : C.tealL) : C.white,
+                color: severityLevel === n ? (n >= EMERGENCY_THRESHOLD ? C.red : C.teal) : C.body,
+              }}>{n}</button>
+            ))}
+          </div>
+          {severityLevel >= EMERGENCY_THRESHOLD && (
+            <div style={{ fontSize: 11, color: C.red, marginTop: 6, fontWeight: 700 }}>
+              {t("checkin.severityUrgentWarning")}
+            </div>
+          )}
+        </div>
+        <Field label={t("checkin.describeSeverity")} value={ticketForm.severity_description} onChange={e => setTicketForm(f => ({ ...f, severity_description: e.target.value }))} placeholder={t("checkin.describeSeverityPlaceholder")} />
+
+        <Field label={t("checkin.anythingElse")} value={ticketForm.additional_notes} onChange={e => setTicketForm(f => ({ ...f, additional_notes: e.target.value }))} rows={3} />
+
+        <label ref={emergencyAckRef} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10, fontSize: 12, color: C.body, cursor: "pointer" }}>
+          <input type="checkbox" checked={emergencyAck} onChange={e => setEmergencyAck(e.target.checked)} style={{ marginTop: 2 }} />
+          {t("checkin.emergencyAckLabel")}
+        </label>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>
+          {t("common.agreeBefore")}<span onClick={() => setScreen("terms")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>{t("common.termsOfService")}</span>{t("common.agreeMiddle")}<span onClick={() => setScreen("privacy")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>{t("common.privacyPolicy")}</span>{t("common.agreeAfter")}
+        </div>
+
+        <Btn label={ticketBusy ? t("checkin.submitting") : t("checkin.submitAndContinue")} primary full loading={ticketBusy} disabled={!emergencyAck} onClick={submitCheckIn} />
+      </div>
+      <Toast {...toast} />
+
+      <Modal open={showEmergencyWarning} onClose={() => {}} title={t("checkin.pleaseReadFirst")}>
+        <div style={{ background: C.redL, border: "1.5px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: C.body, lineHeight: 1.7 }}>
+            {t("checkin.severityWarningModalBody", { level: severityLevel })}
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+          {t("checkin.urgentTicketNotice")}
+        </p>
+        <Btn label={t("checkin.iUnderstandContinue")} primary full onClick={() => { setShowEmergencyWarning(false); setScreen("checkin-code"); }} />
+      </Modal>
+    </div>
+  );
+
+  if (screen === "checkin-code") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 420, width: "100%", textAlign: "center", position: "relative" }}>
+        <div style={{ position: "absolute", top: 14, right: 14 }}><LangToggle lang={lang} setLang={setLang} /></div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.teal, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>{t("checkincode.submitted")}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{t("checkincode.saveCodeNotice")}</div>
+        <button onClick={copyClientCode} style={{
+          fontSize: 32, fontWeight: 900, color: C.navy, letterSpacing: ".08em", background: C.tealL,
+          border: "1.5px dashed " + C.tealB, borderRadius: 12, padding: "16px 20px", marginBottom: 6, cursor: "pointer", fontFamily: "system-ui", width: "100%",
+        }}>{clientCode}</button>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 22 }}>{t("checkincode.tapToCopyNotice")}</div>
+        <Btn label={t("checkincode.continueToPayment")} primary full onClick={() => setShowPay(true)} />
+      </div>
+      <Toast {...toast} />
+
+      <Modal open={showPay} onClose={() => setShowPay(false)} title={t("checkincode.completePayment")}>
+        <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: C.muted }}>{t("checkincode.sendExactly")}</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: C.gold }}>{PLAN_AMOUNT.toLocaleString()} XAF</div>
+        </div>
+        {momoDetailsError ? (
+          <div style={{ background: C.redL, border: "1px solid " + C.redB, borderRadius: 10, padding: 14, marginBottom: 16, color: C.red, fontSize: 13 }}>{momoDetailsError}</div>
+        ) : !momoDetails ? (
+          <div style={{ textAlign: "center", padding: 24, color: C.muted, fontSize: 13 }}>{t("checkincode.loadingPaymentDetails")}</div>
+        ) : (
+          <button onClick={copyMomoNumber} style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: C.surf, border: "1.5px dashed " + C.border, borderRadius: 10, padding: 12, marginBottom: 12, cursor: "pointer", fontFamily: "system-ui" }}>
+            <span style={{ fontSize: 11, color: C.muted }}>{momoCopied ? t("checkincode.copiedSendViaMomo") : t("checkincode.tapToCopyMomo")}</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{momoDetails.momoNumber}</span>
+            <span style={{ fontSize: 11, color: C.muted }}>{momoDetails.momoAccountName}</span>
+          </button>
+        )}
+        <Field label={t("checkincode.referenceLabel")} value={momoRef} onChange={e => setMomoRef(e.target.value)} placeholder={t("checkincode.referencePlaceholder")} required />
+        <Btn label={momoBusy ? t("checkin.submitting") : t("checkincode.ivesSentPayment")} primary full loading={momoBusy} disabled={!momoDetails || !momoRef.trim()} onClick={submitPayment} />
+      </Modal>
+    </div>
+  );
+
+  if (screen === "auth") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <button onClick={() => setScreen("landing")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0 }}>&larr; {t("common.back")}</button>
+          <LangToggle lang={lang} setLang={setLang} />
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>
+          {isReg ? (authRole === "hospital" ? t("auth.hospitalSignUp") : t("auth.professionalSignUp")) : t("auth.signIn")}
+        </div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>
+          {isReg ? (authRole === "hospital" ? t("auth.registerHospitalSubtext") : t("auth.forVerifiedStaffSubtext")) : t("auth.signInSubtext")}
+        </p>
+        {isReg && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <button onClick={() => setAuthRole("staff")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: authRole === "staff" ? C.tealL : C.white, border: "1.5px solid " + (authRole === "staff" ? C.tealB : C.border), color: authRole === "staff" ? C.teal : C.body,
+            }}>{t("auth.healthcareProfessional")}</button>
+            <button onClick={() => setAuthRole("hospital")} style={{
+              flex: 1, padding: "9px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "system-ui",
+              background: authRole === "hospital" ? C.tealL : C.white, border: "1.5px solid " + (authRole === "hospital" ? C.tealB : C.border), color: authRole === "hospital" ? C.teal : C.body,
+            }}>{t("auth.hospital")}</button>
+          </div>
+        )}
+        {isReg && <Field label={authRole === "hospital" ? t("auth.yourNameHospitalContact") : t("auth.fullName")} value={authName} onChange={e => setAuthName(e.target.value)} required />}
+        {isReg && authRole === "staff" && (
+          <>
+            <Field label={t("auth.licenseNumber")} value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required />
+            <Field label={t("auth.issuingInstitution")} value={issuingInstitution} onChange={e => setIssuingInstitution(e.target.value)} required />
+            <Field label={t("auth.specialtyOptional")} value={specialty} onChange={e => setSpecialty(e.target.value)} />
+            <p style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+              {t("auth.staffReviewNotice")}
+            </p>
+          </>
+        )}
+        {isReg && authRole === "hospital" && (
+          <>
+            <Field label={t("auth.hospitalClinicName")} value={hospitalName} onChange={e => setHospitalName(e.target.value)} required />
+            <Field label={t("auth.town")} value={hospitalTown} onChange={e => setHospitalTown(e.target.value)} required />
+            <Field label={t("auth.addressOptional")} value={hospitalAddress} onChange={e => setHospitalAddress(e.target.value)} />
+            <Field label={t("auth.phoneOptional")} value={hospitalPhone} onChange={e => setHospitalPhone(e.target.value)} />
+            <p style={{ fontSize: 11, color: C.muted, marginTop: -8, marginBottom: 14, lineHeight: 1.5 }}>
+              {t("auth.hospitalReviewNotice")}
+            </p>
+          </>
+        )}
+        <Field label={t("auth.email")} value={authEmail} onChange={e => setAuthEmail(e.target.value)} type="email" required />
+        <Field label={isReg ? t("auth.passwordMinChars") : t("auth.password")} value={authPass} onChange={e => setAuthPass(e.target.value)} type="password" required />
+        {isReg && (
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+            {t("auth.agreeBefore")}<span onClick={() => setScreen("terms")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>{t("common.termsOfService")}</span>{t("common.agreeMiddle")}<span onClick={() => setScreen("privacy")} style={{ color: C.teal, cursor: "pointer", fontWeight: 700 }}>{t("common.privacyPolicy")}</span>{t("common.agreeAfter")}
+          </div>
+        )}
+        <Btn label={authBusy ? t("auth.pleaseWait") : isReg ? t("auth.createAccount") : t("auth.signIn")} primary full loading={authBusy} onClick={handleAuth} />
+        {!isReg && (
+          <div style={{ textAlign: "center", marginTop: 10, fontSize: 12 }}>
+            <span onClick={() => { setResetEmail(authEmail); setResetSent(false); setScreen("reset-request"); }} style={{ color: C.muted, cursor: "pointer" }}>{t("auth.forgotPassword")}</span>
+          </div>
+        )}
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: C.muted }}>
+          {isReg ? t("auth.alreadyHaveAccount") : t("auth.newHere")}
+          <span onClick={() => setIsReg(!isReg)} style={{ color: C.teal, fontWeight: 700, cursor: "pointer" }}>{isReg ? t("auth.signInLink") : t("auth.createOneLink")}</span>
+        </div>
+      </div>
+      <Toast {...toast} />
+    </div>
+  );
+
+  if (screen === "reset-request") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <button onClick={() => setScreen("auth")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", padding: 0 }}>&larr; {t("reset.backToSignIn")}</button>
+          <LangToggle lang={lang} setLang={setLang} />
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{t("reset.resetPassword")}</div>
+        {resetSent ? (
+          <p style={{ color: C.body, fontSize: 13, lineHeight: 1.6 }}>
+            {t("reset.linkSentNotice")}
+          </p>
+        ) : (
+          <>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{t("reset.enterEmailNotice")}</p>
+            <Field label={t("auth.email")} value={resetEmail} onChange={e => setResetEmail(e.target.value)} type="email" required />
+            <Btn label={resetBusy ? t("reset.sending") : t("reset.sendResetLink")} primary full loading={resetBusy} onClick={requestPasswordReset} />
+          </>
+        )}
+      </div>
+      <Toast {...toast} />
+    </div>
+  );
+
+  if (screen === "reset-password") return (
+    <div style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.white, borderRadius: 16, padding: 28, maxWidth: 380, width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}><LangToggle lang={lang} setLang={setLang} /></div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{t("reset.setNewPassword")}</div>
+        <p style={{ color: C.muted, fontSize: 13, marginBottom: 18 }}>{t("reset.chooseNewPasswordNotice")}</p>
+        <Field label={t("reset.newPasswordMinChars")} value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" required />
+        <Btn label={newPasswordBusy ? t("reset.saving") : t("reset.savePassword")} primary full loading={newPasswordBusy} onClick={submitNewPassword} />
+      </div>
+      <Toast {...toast} />
+    </div>
+  );
+
+  // -- MAIN APP SHELL (staff/admin only) --
+  if (!user) return null;
+
+  return (
+    <div className="ti-shell" style={{ fontFamily: "system-ui,sans-serif", minHeight: "100vh", background: C.bg, display: "flex" }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .ti-shell { flex-direction: column; }
+          .ti-sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid ${C.border};
+            padding: 10px 14px !important; display: flex !important; align-items: center; flex-wrap: wrap; gap: 10px; }
+          .ti-sidebar-title { margin-bottom: 0 !important; }
+          .ti-nav { display: flex !important; flex: 1; overflow-x: auto; gap: 4px; margin: 0 !important; }
+          .ti-nav button { width: auto !important; white-space: nowrap; margin-bottom: 0 !important; }
+          .ti-account { margin-top: 0 !important; padding-top: 0 !important; border-top: none !important;
+            display: flex !important; align-items: center; gap: 8px; white-space: nowrap; }
+          .ti-account-name { display: none !important; }
+          .ti-content { padding: 16px !important; }
+        }
+      `}</style>
+      <div className="ti-sidebar" style={{ width: 168, background: C.white, borderRight: "1px solid " + C.border, padding: "16px 12px", flexShrink: 0 }}>
+        <div className="ti-sidebar-title" style={{ fontSize: 14, fontWeight: 800, color: C.navy, marginBottom: 14, fontFamily: "Georgia,serif" }}>Ticket-In</div>
+        <div className="ti-nav">
+          {[
+            ...(isStaff ? [{ id: "staffboard", label: t("shell.ticketBoard") }] : []),
+            ...(isHospital ? [{ id: "hospital", label: t("shell.hospitalDashboard") }] : []),
+            ...(isStaff || isAdmin ? [{ id: "forum", label: t("shell.forum") }] : []),
+            ...(isStaff || isAdmin ? [{ id: "resources", label: t("shell.resources") }] : []),
+            ...(isAdmin ? [{ id: "admin", label: t("shell.admin") }] : []),
+            ...(isAdmin ? [{ id: "users", label: t("shell.manageUsers") }] : []),
+          ].map(({ id, label }) => (
+            <button key={id} onClick={() => setPage(id)} style={{
+              width: "100%", padding: "6px 8px", background: page === id ? C.tealL : "transparent", border: "none", borderRadius: 7,
+              color: page === id ? C.teal : C.body, display: "block", fontSize: 12, fontWeight: page === id ? 700 : 500, marginBottom: 1, cursor: "pointer", textAlign: "left", fontFamily: "system-ui",
+            }}>{label}</button>
+          ))}
+        </div>
+        <div className="ti-account" style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid " + C.surf }}>
+          <div className="ti-account-name">
+            <div style={{ fontSize: 11, fontWeight: 700 }}>{user.name}</div>
+            <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase" }}>{t("status." + user.role)}</div>
+          </div>
+          <LangToggle lang={lang} setLang={setLang} style={{ marginTop: 8 }} />
+          <button onClick={logout} style={{ background: "none", border: "none", color: C.red, fontSize: 10, cursor: "pointer", padding: 0, marginTop: 8, fontFamily: "system-ui" }}>{t("shell.signOut")}</button>
+          <div style={{ marginTop: 8, fontSize: 9, color: C.muted }}>
+            <span onClick={() => setScreen("privacy")} style={{ cursor: "pointer" }}>{t("shell.privacy")}</span>
+            {" \u00b7 "}
+            <span onClick={() => setScreen("terms")} style={{ cursor: "pointer" }}>{t("shell.terms")}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="ti-content" style={{ flex: 1, padding: 32, maxWidth: 720 }}>
+
+        {page === "staffboard" && isStaff && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{t("staff.ticketBoard")}</h1>
+            {user.staff_verification_status !== "verified" && (
+              <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: C.body }}>
+                {t("staff.pendingVerificationNotice")}
+              </div>
+            )}
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>{t("staff.openTickets", { count: openTickets.length })}</div>
+            {openTickets.slice().sort((a, b) => (b.severity_level || 0) - (a.severity_level || 0)).map(tk => {
+              const waitMins = (Date.now() - new Date(tk.created_at).getTime()) / 60000;
+              const waitColor = waitMins >= 240 ? C.red : waitMins >= 60 ? C.gold : C.muted;
+              return (
+              <div key={tk.id} style={{
+                background: C.white, borderRadius: 12, padding: 16, marginBottom: 10,
+                border: tk.severity_level >= EMERGENCY_THRESHOLD ? "2px solid " + C.redB : "1px solid " + C.border,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    {tk.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">{t("status.urgent")}</Tag>}
+                    {tk.is_minor && <Tag kind="pending">{t("status.minorGuardianOnFile")}</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: waitColor }}>{t("staff.waitingSince", { time: timeAgo(tk.created_at, lang) })}</span>
+                </div>
+                <div style={{ fontSize: 13, color: C.ink, marginTop: 6, marginBottom: 4 }}><strong>{t("staff.onsetLabel")}</strong> {tk.onset}</div>
+                <div style={{ fontSize: 13, color: C.body, marginBottom: 4 }}>
+                  <strong>{t("staff.severityLabel")}</strong> {tk.severity_level}/10{tk.severity_description ? " - " + tk.severity_description : ""}
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: tk.is_minor ? 2 : 10 }}>{t("common.contact")} {tk.client_phone}</div>
+                {tk.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>{t("common.guardian")} {tk.guardian_name} - {tk.guardian_phone}</div>}
+                <Btn label={t("staff.claimTicket")} primary small onClick={() => claimTicket(tk.id)} disabled={user.staff_verification_status !== "verified"} />
+              </div>
+              );
+            })}
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("staff.myClaimedTickets", { count: myClaimed.length })}</div>
+            {myClaimed.map(tk => (
+              <div key={tk.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                    {tk.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">{t("status.urgent")}</Tag>}
+                    {tk.is_minor && <Tag kind="pending">{t("status.minor")}</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.muted }}>{t("staff.submittedTime", { time: timeAgo(tk.created_at, lang) })}</span>
+                </div>
+                <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{tk.onset}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: tk.is_minor ? 2 : 10 }}>{t("common.contact")} {tk.client_phone}</div>
+                {tk.is_minor && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>{t("common.guardian")} {tk.guardian_name} - {tk.guardian_phone}</div>}
+                {tk.status === "claimed" && <Btn label={t("staff.startConsultation")} primary small onClick={() => startConsultation(tk.id)} />}
+                {tk.status === "in_progress" && <Btn label={t("staff.resolveAddNotes")} primary small onClick={() => setResolvingTicket(tk.id)} />}
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>
+              {t("staff.myEarningsPending", { amount: myPayouts.filter(p => p.status === "pending").reduce((s, p) => s + Number(p.amount), 0) })}
+            </div>
+            {myPayouts.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>{t("staff.resolveToEarnNotice")}</div>}
+            {myPayouts.map(p => (
+              <div key={p.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{p.amount} XAF</span>
+                <Tag kind={p.status === "paid" ? "verified" : "pending"}>{t("status." + p.status)}</Tag>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {page === "hospital" && isHospital && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{myHospital?.name || t("hospital.dashboardFallbackTitle")}</h1>
+            {user.staff_verification_status !== "verified" && (
+              <div style={{ background: "#FBF0D6", borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: C.body }}>
+                {t("hospital.pendingVerificationNotice")}
+              </div>
+            )}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>{t("hospital.doctorRoster", { count: hospitalDoctors.length })}</div>
+            <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <Field label={t("hospital.addDoctorByEmail")} value={doctorEmailInput} onChange={e => setDoctorEmailInput(e.target.value)} placeholder={t("hospital.doctorEmailPlaceholder")} />
+                </div>
+                <div style={{ paddingTop: 22 }}>
+                  <Btn label={doctorAddBusy ? t("hospital.adding") : t("hospital.add")} primary loading={doctorAddBusy} onClick={addDoctorByEmail} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: -8 }}>{t("hospital.mustHaveAccountNotice")}</div>
+            </div>
+            {hospitalDoctors.map(d => (
+              <div key={d.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{d.name}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{d.staff_credentials?.specialty || d.staff_credentials?.issuing_institution || ""}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Tag kind={d.staff_verification_status === "verified" ? "verified" : "pending"}>{t("status." + d.staff_verification_status)}</Tag>
+                  <button onClick={() => removeDoctor(d.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "system-ui" }}>{t("common.remove")}</button>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("hospital.ticketsSentToYourHospital", { count: hospitalTickets.length })}</div>
+            {hospitalTickets.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>{t("hospital.noInPersonTicketsYet")}</div>}
+            {hospitalTickets.map(tk => (
+              <div key={tk.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                    {tk.severity_level >= EMERGENCY_THRESHOLD && <Tag kind="expired">{t("status.urgent")}</Tag>}
+                  </div>
+                  <span style={{ fontSize: 11, color: C.muted }}>{t("staff.submittedTime", { time: timeAgo(tk.created_at, lang) })}</span>
+                </div>
+                <div style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>{tk.onset}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{t("common.contact")} {tk.client_phone}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {page === "forum" && (isStaff || isAdmin) && (
+          <div style={{ maxWidth: 640 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{t("forum.title")}</h1>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>
+              {t("forum.subtext")}
+            </p>
+
+            {(isAdmin || user.staff_verification_status === "verified") ? (
+              <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{t("forum.startDiscussion")}</div>
+                <Field label={t("forum.subjectOptional")} value={newThreadSubject} onChange={e => setNewThreadSubject(e.target.value)} placeholder={t("forum.subjectPlaceholder")} />
+                <Field label={t("forum.whatsOnYourMind")} value={newThreadBody} onChange={e => setNewThreadBody(e.target.value)} rows={3} placeholder={t("forum.bodyPlaceholder")} />
+                <Btn label={t("forum.post")} primary full onClick={submitThread} />
+              </div>
+            ) : (
+              <div style={{ background: C.surf, borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "center" }}>
+                {t("forum.notVerifiedNotice")}
+              </div>
+            )}
+
+            {forumLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>{t("common.loading")}</div>
+            ) : (
+              forumPosts.filter(p => !p.parent_post_id && !p.is_deleted).map(thread => {
+                const replies = forumPosts.filter(p => p.parent_post_id === thread.id && !p.is_deleted);
+                const canModerate = isAdmin || user.id === thread.staff_id;
+                return (
+                  <div key={thread.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div>
+                        {thread.subject && <Tag kind="pending">{thread.subject}</Tag>}
+                        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>{thread.staff_name} <span style={{ fontWeight: 400, color: C.muted }}>&middot; {new Date(thread.created_at).toLocaleDateString()}</span></div>
+                      </div>
+                      {canModerate && <button onClick={() => deleteForumPost(thread.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", fontFamily: "system-ui" }}>{t("common.remove")}</button>}
+                    </div>
+                    <div style={{ fontSize: 14, color: C.ink, lineHeight: 1.6, marginBottom: 10 }}>{thread.body}</div>
+
+                    {replies.length > 0 && (
+                      <div style={{ borderLeft: "2px solid " + C.surf, paddingLeft: 12, marginBottom: 10 }}>
+                        {replies.map(r => (
+                          <div key={r.id} style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>{r.staff_name}
+                              {(isAdmin || user.id === r.staff_id) && <button onClick={() => deleteForumPost(r.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 10, cursor: "pointer", marginLeft: 8, fontFamily: "system-ui" }}>{t("common.remove")}</button>}
+                            </div>
+                            <div style={{ fontSize: 13, color: C.body, lineHeight: 1.5 }}>{r.body}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(isAdmin || user.staff_verification_status === "verified") && (
+                      expandedThread === thread.id ? (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder={t("forum.writeReplyPlaceholder")}
+                            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1.5px solid " + C.border, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                          <Btn label={t("common.reply")} small onClick={() => submitReply(thread.id)} />
+                        </div>
+                      ) : (
+                        <button onClick={() => setExpandedThread(thread.id)} style={{ background: "none", border: "none", color: C.teal, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "system-ui" }}>{t("common.reply")}</button>
+                      )
+                    )}
+                  </div>
+                );
+              })
+            )}
+            {!forumLoading && forumPosts.filter(p => !p.parent_post_id && !p.is_deleted).length === 0 && (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>{t("forum.noDiscussionsYet")}</div>
+            )}
+          </div>
+        )}
+
+        {page === "resources" && (isStaff || isAdmin) && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <h1 style={{ fontSize: 20, fontWeight: 800 }}>{t("resources.title")}</h1>
+              {isAdmin && <Btn label={showAddResource ? t("common.cancel") : t("resources.addResource")} small onClick={() => setShowAddResource(s => !s)} />}
+            </div>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>{t("resources.subtext")}</p>
+
+            {showAddResource && isAdmin && (
+              <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 20 }}>
+                <Field label={t("resources.titleLabel")} value={newResTitle} onChange={e => setNewResTitle(e.target.value)} placeholder={t("resources.titlePlaceholder")} />
+                <Field label={t("resources.categoryOptional")} value={newResCategory} onChange={e => setNewResCategory(e.target.value)} placeholder={t("resources.categoryPlaceholder")} />
+                <Field label={t("resources.descriptionOptional")} value={newResDesc} onChange={e => setNewResDesc(e.target.value)} rows={2} />
+                <Field label={t("resources.linkOptional")} value={newResLink} onChange={e => setNewResLink(e.target.value)} placeholder={t("resources.linkPlaceholder")} />
+                <Field label={t("resources.writtenContentOptional")} value={newResText} onChange={e => setNewResText(e.target.value)} rows={4} placeholder={t("resources.writtenContentPlaceholder")} />
+                <Btn label={t("resources.saveResource")} primary full onClick={submitResource} />
+              </div>
+            )}
+
+            {resourcesLoading ? (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>{t("common.loading")}</div>
+            ) : (
+              resources.map(r => (
+                <div key={r.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 13, padding: 16, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                    <div>
+                      {r.category && <Tag kind="pending">{r.category}</Tag>}
+                      <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>{r.title}</div>
+                    </div>
+                    {isAdmin && <button onClick={() => deleteResource(r.id)} style={{ background: "none", border: "none", color: C.red, fontSize: 11, cursor: "pointer", fontFamily: "system-ui" }}>{t("common.remove")}</button>}
+                  </div>
+                  {r.description && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{r.description}</div>}
+                  {r.text_content && <div style={{ fontSize: 13, color: C.body, lineHeight: 1.6, marginTop: 10, whiteSpace: "pre-wrap" }}>{r.text_content}</div>}
+                  {r.link_url && <a href={r.link_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, fontSize: 12, color: C.teal, fontWeight: 700 }}>{t("resources.openLink")}</a>}
+                </div>
+              ))
+            )}
+            {!resourcesLoading && resources.length === 0 && (
+              <div style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 13 }}>{t("resources.noResourcesYet")}</div>
+            )}
+          </div>
+        )}
+
+        {page === "admin" && isAdmin && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>{t("admin.title")}</h1>
+
+            {urgentTickets.length > 0 && (
+              <div style={{ background: C.redL, border: "2px solid " + C.redB, borderRadius: 12, padding: 16, marginBottom: 26 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.red, marginBottom: 4 }}>
+                  {t("admin.needsAttentionUrgent", { count: urgentTickets.length })}
+                </div>
+                <div style={{ fontSize: 11, color: C.body, marginBottom: 12 }}>
+                  {t("admin.urgentNotice")}
+                </div>
+                {urgentTickets.map(tk => (
+                  <div key={tk.id} style={{ background: C.white, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: C.red }}>{timeAgo(tk.created_at, lang)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.ink }}>{tk.onset}{tk.severity_description ? " - " + tk.severity_description : ""}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 2 }}>{t("admin.severityContact", { level: tk.severity_level, phone: tk.client_phone })}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {ticketStats && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 26 }}>
+                {[
+                  [t("admin.statTotal"), ticketStats.total, C.navy],
+                  [t("admin.statUrgentActive"), ticketStats.urgent_active, C.red],
+                  [t("admin.statOpen"), ticketStats.open, C.teal],
+                  [t("admin.statClaimed"), ticketStats.claimed, C.gold],
+                  [t("admin.statInProgress"), ticketStats.in_progress, C.gold],
+                  [t("admin.statResolved"), ticketStats.resolved, C.green],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
+                    <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: ".05em", marginTop: 3 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 26 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{t("admin.findTicketByPhone")}</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: phoneSearchResults ? 14 : 0 }}>
+                <input value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder={t("admin.searchPhonePlaceholder")}
+                  onKeyDown={e => e.key === "Enter" && searchByPhone()}
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "1.5px solid " + C.border, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                <Btn label={phoneSearchBusy ? "..." : t("admin.search")} primary small onClick={searchByPhone} />
+              </div>
+              {phoneSearchResults && (
+                phoneSearchResults.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.muted }}>{t("admin.noTicketsFoundForNumber")}</div>
+                ) : (
+                  phoneSearchResults.map(tk => (
+                    <div key={tk.id} style={{ borderTop: "1px solid " + C.surf, paddingTop: 10, marginTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                        <span style={{ fontSize: 11, color: C.muted }}>{new Date(tk.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.ink }}>{tk.onset}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{t("admin.severityCodePhone", { level: tk.severity_level, code: tk.client_code, phone: tk.client_phone })}</div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{t("admin.pendingPayments", { count: pendingPayments.length })}</div>
+            {pendingPayments.map(p => (
+              <div key={p.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{p.amount} XAF</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{t("admin.refLabel", { ref: p.reference_note })}</div>
+                </div>
+                <Btn label={t("common.confirm")} primary small onClick={() => confirmPayment(p.id)} />
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("admin.pendingStaffPayouts", { count: pendingPayouts.length })}</div>
+            {pendingPayouts.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>{t("admin.nothingOwedRightNow")}</div>}
+            {pendingPayouts.map(p => (
+              <div key={p.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{p.staffName} - {p.amount} XAF</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{t("admin.earnedTime", { time: timeAgo(p.created_at, lang) })}</div>
+                </div>
+                <Btn label={t("admin.markPaid")} primary small onClick={() => markPayoutPaid(p.id)} />
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("admin.pendingStaffVerification", { count: pendingStaff.length })}</div>
+            {pendingStaff.map(s => (
+              <div key={s.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{s.name}</div>
+                {s.credentials ? (
+                  <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                    <div><strong>{t("common.licenseNumberLabel")}</strong> {s.credentials.license_number || "-"}</div>
+                    <div><strong>{t("common.institutionLabel")}</strong> {s.credentials.issuing_institution || "-"}</div>
+                    {s.credentials.specialty && <div><strong>{t("common.specialtyLabel")}</strong> {s.credentials.specialty}</div>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{t("common.noCredentialsWarning")}</div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn label={t("common.verify")} primary small onClick={() => verifyStaff(s.id, "verified")} />
+                  <Btn label={t("common.reject")} small onClick={() => verifyStaff(s.id, "rejected")} />
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("admin.pendingHospitalVerification", { count: pendingHospitals.length })}</div>
+            {pendingHospitals.map(h => (
+              <div key={h.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{h.hospital?.name || t("admin.hospitalNameMissing")}</div>
+                {h.hospital ? (
+                  <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                    <div style={{ color: C.muted, marginBottom: 4 }}>{t("common.registeredBy", { name: h.name })}</div>
+                    <div><strong>{t("common.townLabel")}</strong> {h.hospital.town}</div>
+                    {h.hospital.address && <div><strong>{t("common.addressLabel")}</strong> {h.hospital.address}</div>}
+                    {h.hospital.phone && <div><strong>{t("common.phoneLabel")}</strong> {h.hospital.phone}</div>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{t("common.noHospitalRecordWarning")}</div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn label={t("common.verify")} primary small onClick={() => verifyStaff(h.id, "verified")} />
+                  <Btn label={t("common.reject")} small onClick={() => verifyStaff(h.id, "rejected")} />
+                </div>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "24px 0 10px" }}>{t("admin.inPersonTicketsByHospital", { count: hospitalTicketIndex.length })}</div>
+            {hospitalTicketIndex.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>{t("admin.noInPersonTicketsYet")}</div>}
+            {hospitalTicketIndex.map(tk => (
+              <div key={tk.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                  <span style={{ fontSize: 11, color: C.muted }}>{timeAgo(tk.created_at, lang)}</span>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{tk.hospitals?.name || t("common.unknownHospital")} - {tk.hospitals?.town}</div>
+                <div style={{ fontSize: 12, color: C.ink }}>{tk.onset}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {page === "users" && isAdmin && (
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>{t("users.title")}</h1>
+            {allUsers.map(u => (
+              <div key={u.id} style={{ background: C.white, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{u.role === "hospital" ? (u.hospital?.name || t("admin.hospitalNameMissing")) : u.name}</div>
+                    {u.role === "hospital" ? (
+                      <div style={{ fontSize: 11, color: C.muted }}>{u.phone ? t("users.registeredByWithPhone", { name: u.name, phone: u.phone }) : t("common.registeredBy", { name: u.name })}</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: C.muted }}>{u.phone || t("common.noPhone")}</div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <Tag kind={u.role}>{t("status." + u.role)}</Tag>
+                    {u.role === "staff" && <Tag kind={u.staff_verification_status}>{t("status." + u.staff_verification_status)}</Tag>}
+                  </div>
+                </div>
+                {u.role === "staff" && (
+                  u.credentials ? (
+                    <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
+                      <div><strong>{t("common.licenseNumberLabel")}</strong> {u.credentials.license_number || "-"}</div>
+                      <div><strong>{t("common.institutionLabel")}</strong> {u.credentials.issuing_institution || "-"}</div>
+                      {u.credentials.specialty && <div><strong>{t("common.specialtyLabel")}</strong> {u.credentials.specialty}</div>}
+                      {u.verified_at && <div style={{ color: C.muted, fontSize: 11 }}>{t("users.verifiedOn", { date: new Date(u.verified_at).toLocaleDateString() })}</div>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{t("users.noCredentialsOnFile")}</div>
+                  )
+                )}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {["staff", "admin"].map(r => r !== u.role && (
+                    <Btn key={r} label={t("admin.setRolePrefix") + t("status." + r)} small onClick={() => changeUserRole(u.id, r)} />
+                  ))}
+                  {u.role === "staff" && u.staff_verification_status !== "verified" && (
+                    <Btn label={t("common.verify")} small primary onClick={() => changeUserVerification(u.id, "verified")} />
+                  )}
+                  {u.role === "staff" && u.staff_verification_status === "verified" && (
+                    <Btn label={t("users.suspend")} small onClick={() => changeUserVerification(u.id, "suspended")} />
+                  )}
+                  {(u.role === "staff" || u.role === "hospital") && (
+                    <button onClick={() => deleteAccount(u)} disabled={deletingUserId === u.id} style={{
+                      padding: "8px 14px", fontSize: 12, fontWeight: 700, borderRadius: 10,
+                      cursor: deletingUserId === u.id ? "default" : "pointer",
+                      border: "1.5px solid " + C.red, background: C.white, color: C.red,
+                      fontFamily: "system-ui", opacity: deletingUserId === u.id ? 0.6 : 1,
+                    }}>{deletingUserId === u.id ? "..." : t("users.delete")}</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Modal open={!!resolvingTicket} onClose={() => setResolvingTicket(null)} title={t("resolve.title")}>
+        <Field label={t("resolve.objectiveAssessment")} value={resolveNotes.objective_assessment} onChange={e => setResolveNotes(n => ({ ...n, objective_assessment: e.target.value }))} rows={2} />
+        <Field label={t("resolve.clinicalDiagnosis")} value={resolveNotes.clinical_diagnosis} onChange={e => setResolveNotes(n => ({ ...n, clinical_diagnosis: e.target.value }))} rows={2} />
+        <Field label={t("resolve.plan")} value={resolveNotes.plan} onChange={e => setResolveNotes(n => ({ ...n, plan: e.target.value }))} rows={2} />
+        <Field label={t("resolve.implementation")} value={resolveNotes.implementation} onChange={e => setResolveNotes(n => ({ ...n, implementation: e.target.value }))} rows={2} />
+        <Field label={t("resolve.evaluation")} value={resolveNotes.evaluation} onChange={e => setResolveNotes(n => ({ ...n, evaluation: e.target.value }))} rows={2} />
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, marginTop: 10 }}>{t("resolve.clientSummaryNotice")}</div>
+        <Field label={t("resolve.clientSummary")} value={resolveSummary} onChange={e => setResolveSummary(e.target.value)} rows={3} required />
+        <Btn label={resolveBusy ? t("resolve.resolving") : t("resolve.resolveTicket")} primary full loading={resolveBusy} onClick={submitResolution} />
+      </Modal>
+
+      <Toast {...toast} />
+    </div>
+  );
 }
