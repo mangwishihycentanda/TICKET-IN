@@ -349,6 +349,8 @@ export const translations = {
   "admin.pendingHospitalVerification": { en: "Pending Hospital Verification ({count})", fr: "Vérification des hôpitaux en attente ({count})" },
   "admin.hospitalNameMissing": { en: "(hospital name missing)", fr: "(nom de l'hôpital manquant)" },
   "admin.inPersonTicketsByHospital": { en: "In-Person Tickets by Hospital ({count})", fr: "Tickets en personne par hôpital ({count})" },
+  "admin.viewHospitalDashboard": { en: "View Dashboard", fr: "Voir le tableau de bord" },
+  "admin.noDoctorsOnRoster": { en: "No doctors on this hospital's roster yet.", fr: "Aucun médecin n'est encore inscrit sur la liste de cet hôpital." },
   "admin.noInPersonTicketsYet": { en: "No in-person tickets yet.", fr: "Aucun ticket en personne pour l'instant." },
   "admin.err.enterPhoneToSearch": { en: "Enter a phone number to search.", fr: "Entrez un numéro de téléphone pour rechercher." },
   "admin.err.searchFailed": { en: "Search failed: {error}", fr: "Échec de la recherche : {error}" },
