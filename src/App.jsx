@@ -774,6 +774,31 @@ export default function App() {
     loadAllUsers();
   }
 
+  // -- ADMIN: READ-ONLY VIEW OF A SPECIFIC HOSPITAL'S DASHBOARD -- lets
+  // admin see a facility's own roster/tickets for support and onboarding
+  // (e.g. "why isn't this hospital seeing tickets") without needing that
+  // hospital's own login. Same queries as the hospital's own dashboard,
+  // just parameterized by hospitalId instead of created_by=own id - RLS
+  // already grants admin full read access via ti_is_admin(), same as
+  // every other admin query in this file. No write actions here on
+  // purpose - roster/doctor changes stay the hospital's own responsibility.
+  const [viewingHospital, setViewingHospital] = useState(null);
+  const [viewingHospitalDoctors, setViewingHospitalDoctors] = useState([]);
+  const [viewingHospitalTickets, setViewingHospitalTickets] = useState([]);
+  const [viewingHospitalBusy, setViewingHospitalBusy] = useState(false);
+  async function openHospitalView(hospital) {
+    if (!hospital) return;
+    setViewingHospital(hospital);
+    setViewingHospitalBusy(true);
+    const [docs, tix] = await Promise.all([
+      supabase.from("profiles").select("*, staff_credentials(*)").eq("hospital_id", hospital.id).eq("role", "staff"),
+      supabase.from("tickets").select("*").eq("hospital_id", hospital.id).order("created_at", { ascending: false }),
+    ]);
+    setViewingHospitalDoctors(docs.data || []);
+    setViewingHospitalTickets(tix.data || []);
+    setViewingHospitalBusy(false);
+  }
+
   // ==========================================================================
   // HOSPITAL DASHBOARD
   // ==========================================================================
@@ -1597,6 +1622,7 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <Btn label={t("common.verify")} primary small onClick={() => verifyStaff(h.id, "verified")} />
                   <Btn label={t("common.reject")} small onClick={() => verifyStaff(h.id, "rejected")} />
+                  {h.hospital && <Btn label={t("admin.viewHospitalDashboard")} small onClick={() => openHospitalView(h.hospital)} />}
                 </div>
               </div>
             ))}
@@ -1648,6 +1674,9 @@ export default function App() {
                   )
                 )}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {u.role === "hospital" && u.hospital && (
+                    <Btn label={t("admin.viewHospitalDashboard")} small onClick={() => openHospitalView(u.hospital)} />
+                  )}
                   {["staff", "admin"].map(r => r !== u.role && (
                     <Btn key={r} label={t("admin.setRolePrefix") + t("status." + r)} small onClick={() => changeUserRole(u.id, r)} />
                   ))}
@@ -1681,6 +1710,45 @@ export default function App() {
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, marginTop: 10 }}>{t("resolve.clientSummaryNotice")}</div>
         <Field label={t("resolve.clientSummary")} value={resolveSummary} onChange={e => setResolveSummary(e.target.value)} rows={3} required />
         <Btn label={resolveBusy ? t("resolve.resolving") : t("resolve.resolveTicket")} primary full loading={resolveBusy} onClick={submitResolution} />
+      </Modal>
+
+      <Modal open={!!viewingHospital} onClose={() => setViewingHospital(null)} title={viewingHospital?.name || t("hospital.dashboardFallbackTitle")}>
+        {viewingHospitalBusy ? (
+          <div style={{ textAlign: "center", padding: 24, color: C.muted, fontSize: 13 }}>{t("common.loading")}</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              <div>{viewingHospital?.town}</div>
+              {viewingHospital?.address && <div>{viewingHospital.address}</div>}
+              {viewingHospital?.phone && <div>{viewingHospital.phone}</div>}
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "10px 0" }}>{t("hospital.doctorRoster", { count: viewingHospitalDoctors.length })}</div>
+            {viewingHospitalDoctors.length === 0 && <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>{t("admin.noDoctorsOnRoster")}</div>}
+            {viewingHospitalDoctors.map(d => (
+              <div key={d.id} style={{ border: "1px solid " + C.border, borderRadius: 10, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{d.name}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{d.staff_credentials?.specialty || d.staff_credentials?.issuing_institution || ""}</div>
+                </div>
+                <Tag kind={d.staff_verification_status === "verified" ? "verified" : "pending"}>{t("status." + d.staff_verification_status)}</Tag>
+              </div>
+            ))}
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "20px 0 10px" }}>{t("hospital.ticketsSentToYourHospital", { count: viewingHospitalTickets.length })}</div>
+            {viewingHospitalTickets.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>{t("hospital.noInPersonTicketsYet")}</div>}
+            {viewingHospitalTickets.map(tk => (
+              <div key={tk.id} style={{ border: "1px solid " + C.border, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
+                  <span style={{ fontSize: 11, color: C.muted }}>{timeAgo(tk.created_at, lang)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: C.ink }}>{tk.onset}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{t("common.contact")} {tk.client_phone}</div>
+              </div>
+            ))}
+          </>
+        )}
       </Modal>
 
       <Toast {...toast} />
