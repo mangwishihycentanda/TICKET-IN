@@ -297,11 +297,19 @@ create policy "staff_payouts_update_admin" on public.staff_payouts
 
 -- ============================================================================
 -- TABLE: ratings
+-- client_id is nullable and untrusted - clients have no auth.users row at
+-- all (see tickets.client_id / the account-free check-in model), so
+-- there is deliberately no client-side insert policy here, same as
+-- ticket_clinical_notes. Submission is gated server-side in
+-- submit-rating.js (service-role, verifies phone+code ownership and that
+-- the ticket is actually resolved). See
+-- 20260924b_fix_ratings_for_accountless_clients.sql for the migration
+-- that corrected an earlier, unreachable auth.uid()-based policy.
 -- ============================================================================
 create table public.ratings (
   id uuid primary key default gen_random_uuid(),
   ticket_id uuid not null references public.tickets(id),
-  client_id uuid not null references public.profiles(id),
+  client_id uuid references public.profiles(id),
   staff_id uuid not null references public.profiles(id),
   rating integer not null check (rating between 1 and 5),
   comment text,
@@ -313,8 +321,4 @@ alter table public.ratings enable row level security;
 create policy "ratings_select_all" on public.ratings
   for select using (true);   -- staff ratings are meant to be visible, like a public reputation score
 
-create policy "ratings_insert_own_client" on public.ratings
-  for insert with check (
-    auth.uid() = client_id
-    and exists (select 1 from public.tickets where id = ticket_id and client_id = auth.uid() and status = 'resolved')
-  );
+create unique index if not exists ratings_ticket_id_unique_idx on public.ratings(ticket_id);
