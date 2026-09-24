@@ -348,6 +348,7 @@ export const translations = {
   "admin.severityCodePhone": { en: "Severity {level}/10 - Code: {code} - {phone}", fr: "Gravité {level}/10 - Code : {code} - {phone}" },
   "admin.summaryFromProfessional": { en: "Summary from professional (client-visible)", fr: "Résumé du professionnel (visible par le client)" },
   "admin.clinicalNotes": { en: "Clinical notes (staff/admin only)", fr: "Notes cliniques (personnel/admin uniquement)" },
+  "admin.clientRating": { en: "Client's rating of staff", fr: "Note du client sur le personnel" },
   "admin.notesObjective": { en: "Objective assessment", fr: "Évaluation objective" },
   "admin.notesDiagnosis": { en: "Clinical diagnosis", fr: "Diagnostic clinique" },
   "admin.notesPlan": { en: "Plan", fr: "Plan" },
