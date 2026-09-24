@@ -32,7 +32,17 @@ export default async function handler(req, res) {
 
     if (error || !data) return res.status(404).json({ error: "No ticket found for that phone number and code." });
 
-    return res.status(200).json({ ticket: data });
+    // Already-rated check, so the UI can hide the rating form instead of
+    // letting a client try to submit a second one (the ratings table's
+    // unique index would reject it anyway, but this avoids the round trip).
+    let alreadyRated = false;
+    if (data.status === "resolved") {
+      const { count } = await supabaseAdmin
+        .from("ratings").select("id", { count: "exact", head: true }).eq("ticket_id", data.id);
+      alreadyRated = (count || 0) > 0;
+    }
+
+    return res.status(200).json({ ticket: { ...data, already_rated: alreadyRated } });
   } catch (e) {
     return res.status(500).json({ error: "Unexpected server error: " + (e.message || String(e)) });
   }
