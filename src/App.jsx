@@ -474,9 +474,10 @@ export default function App() {
   async function submitRating() {
     if (ratingValue < 1) return;
     setRatingBusy(true);
-    const res = await fetch("/api/submit-rating", {
+    const res = await fetch("/api/lookup-ticket", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        action: "rate",
         ticketId: lookupResult.id, phone: lookupPhone.trim(), code: lookupCode.trim(),
         rating: ratingValue, comment: ratingComment,
       }),
