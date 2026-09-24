@@ -683,6 +683,7 @@ export default function App() {
   const [phoneSearch, setPhoneSearch] = useState("");
   const [phoneSearchResults, setPhoneSearchResults] = useState(null);
   const [phoneSearchNotes, setPhoneSearchNotes] = useState({});
+  const [phoneSearchRatings, setPhoneSearchRatings] = useState({});
   const [phoneSearchBusy, setPhoneSearchBusy] = useState(false);
   const [urgentTickets, setUrgentTickets] = useState([]);
   async function loadUrgentTickets() {
@@ -715,8 +716,14 @@ export default function App() {
     if (resolvedIds.length > 0) {
       const { data: notes } = await supabase.from("ticket_clinical_notes").select("*").in("ticket_id", resolvedIds);
       setPhoneSearchNotes(Object.fromEntries((notes || []).map(n => [n.ticket_id, n])));
+      // Client's own rating + comment of the staff who handled this ticket -
+      // ratings_select_all already lets admin read this, the UI just never
+      // surfaced it (same gap as the clinical notes above).
+      const { data: ratings } = await supabase.from("ratings").select("*").in("ticket_id", resolvedIds);
+      setPhoneSearchRatings(Object.fromEntries((ratings || []).map(r => [r.ticket_id, r])));
     } else {
       setPhoneSearchNotes({});
+      setPhoneSearchRatings({});
     }
     setPhoneSearchBusy(false);
   }
@@ -1617,6 +1624,7 @@ export default function App() {
                 ) : (
                   phoneSearchResults.map(tk => {
                     const notes = phoneSearchNotes[tk.id];
+                    const rating = phoneSearchRatings[tk.id];
                     return (
                     <div key={tk.id} style={{ borderTop: "1px solid " + C.surf, paddingTop: 10, marginTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -1638,6 +1646,13 @@ export default function App() {
                           {notes.plan && <div style={{ marginTop: 6 }}><em>{t("admin.notesPlan")}:</em> {notes.plan}</div>}
                           {notes.implementation && <div style={{ marginTop: 6 }}><em>{t("admin.notesImplementation")}:</em> {notes.implementation}</div>}
                           {notes.evaluation && <div style={{ marginTop: 6 }}><em>{t("admin.notesEvaluation")}:</em> {notes.evaluation}</div>}
+                        </div>
+                      )}
+                      {rating && (
+                        <div style={{ fontSize: 12, color: C.ink, background: C.surf, borderRadius: 8, padding: 10, marginTop: 8 }}>
+                          <strong>{t("admin.clientRating")}</strong><br />
+                          <span style={{ color: C.gold, letterSpacing: 1 }}>{"★".repeat(rating.rating) + "☆".repeat(5 - rating.rating)}</span>
+                          {rating.comment && <div style={{ marginTop: 4 }}>{rating.comment}</div>}
                         </div>
                       )}
                     </div>
