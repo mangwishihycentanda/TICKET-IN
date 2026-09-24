@@ -764,15 +764,27 @@ export default function App() {
     if (!error && data) setHospitalTicketIndex(data);
   }
   async function loadAllUsers() {
-    const [usersRes, credsRes, hospitalsRes] = await Promise.all([
+    const [usersRes, credsRes, hospitalsRes, ratingsRes] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("staff_credentials").select("*"),
       supabase.from("hospitals").select("*"),
+      supabase.from("ratings").select("staff_id, rating"),
     ]);
     if (usersRes.error) { notify(t("admin.err.loadUsersFailed", { error: usersRes.error.message }), false); return; }
     const credsById = Object.fromEntries((credsRes.data || []).map(c => [c.staff_id, c]));
     const hospitalByOwner = Object.fromEntries((hospitalsRes.data || []).map(h => [h.created_by, h]));
-    if (usersRes.data) setAllUsers(usersRes.data.map(u => ({ ...u, credentials: credsById[u.id], hospital: hospitalByOwner[u.id] })));
+    // Average client rating per staff member, so admin can see it right on
+    // Manage Users instead of hunting one ticket at a time via phone search.
+    const ratingsByStaff = {};
+    (ratingsRes.data || []).forEach(r => {
+      if (!ratingsByStaff[r.staff_id]) ratingsByStaff[r.staff_id] = [];
+      ratingsByStaff[r.staff_id].push(r.rating);
+    });
+    if (usersRes.data) setAllUsers(usersRes.data.map(u => {
+      const staffRatings = ratingsByStaff[u.id];
+      const avgRating = staffRatings ? staffRatings.reduce((a, b) => a + b, 0) / staffRatings.length : null;
+      return { ...u, credentials: credsById[u.id], hospital: hospitalByOwner[u.id], avgRating, ratingCount: staffRatings?.length || 0 };
+    }));
   }
   async function changeUserRole(userId, newRole) {
     const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
@@ -1761,6 +1773,13 @@ export default function App() {
                     {u.role === "staff" && <Tag kind={u.staff_verification_status}>{t("status." + u.staff_verification_status)}</Tag>}
                   </div>
                 </div>
+                {u.role === "staff" && (
+                  <div style={{ fontSize: 12, color: u.avgRating ? C.ink : C.muted, marginBottom: 8 }}>
+                    {u.avgRating
+                      ? t("users.avgRating", { rating: u.avgRating.toFixed(1), count: u.ratingCount })
+                      : t("users.noRatingsYet")}
+                  </div>
+                )}
                 {u.role === "staff" && (
                   u.credentials ? (
                     <div style={{ fontSize: 12, color: C.body, marginBottom: 10, lineHeight: 1.7 }}>
