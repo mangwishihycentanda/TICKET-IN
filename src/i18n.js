@@ -390,6 +390,8 @@ export const translations = {
   "users.registeredByWithPhone": { en: "Registered by {name} - {phone}", fr: "Enregistré par {name} - {phone}" },
   "users.verifiedOn": { en: "Verified {date}", fr: "Vérifié le {date}" },
   "users.noCredentialsOnFile": { en: "No credentials on file.", fr: "Aucun justificatif enregistré." },
+  "users.avgRating": { en: "★ {rating} average ({count} rating(s))", fr: "★ {rating} de moyenne ({count} note(s))" },
+  "users.noRatingsYet": { en: "No client ratings yet", fr: "Aucune note client pour le moment" },
   "users.suspend": { en: "Suspend", fr: "Suspendre" },
   "users.delete": { en: "Delete", fr: "Supprimer" },
 
