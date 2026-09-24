@@ -80,7 +80,7 @@ export const translations = {
   // --------------------------------------------------------------------
   "landing.headline": { en: "Don't know where to start? Start here.", fr: "Vous ne savez pas par où commencer ? Commencez ici." },
   "landing.subtext": { en: "Check in with just your phone number, describe how you're feeling, and get matched with a qualified freelance healthcare professional.", fr: "Enregistrez-vous avec simplement votre numéro de téléphone, décrivez comment vous vous sentez, et soyez mis en relation avec un professionnel de santé indépendant qualifié." },
-  "landing.checkInNow": { en: "Check In Now", fr: "S'enregistrer maintenant" },
+  "landing.checkInNow": { en: "Consult Now", fr: "Consulter maintenant" },
   "landing.checkTicketStatus": { en: "Check My Ticket Status", fr: "Vérifier le statut de mon ticket" },
   "landing.imHealthcareProfessional": { en: "I'm a Healthcare Professional", fr: "Je suis un professionnel de santé" },
   "landing.registerMyHospital": { en: "Register My Hospital", fr: "Enregistrer mon hôpital" },
