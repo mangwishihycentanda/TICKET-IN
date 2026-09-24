@@ -512,8 +512,13 @@ export default function App() {
   }
 
   async function startConsultation(ticketId) {
-    const { error } = await supabase.from("tickets").update({ status: "in_progress" }).eq("id", ticketId).eq("claimed_by", user.id);
-    if (error) { notify(t("common.couldNotUpdate", { error: error.message }), false); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/start-consultation", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ ticketId }),
+    });
+    const body = await res.json();
+    if (!res.ok) { notify(body.error || t("common.couldNotUpdate", { error: body.error || "" }), false); loadStaffBoard(); return; }
     notify(t("staff.consultationStarted"));
     loadStaffBoard();
   }
