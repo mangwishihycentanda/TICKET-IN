@@ -99,6 +99,13 @@ export const translations = {
   "lookup.enterBoth": { en: "Please enter both your phone number and code.", fr: "Veuillez entrer votre numéro de téléphone et votre code." },
   "lookup.notFound": { en: "Could not find that ticket.", fr: "Impossible de trouver ce ticket." },
   "lookup.checkFailed": { en: "Could not check status: {error}", fr: "Impossible de vérifier le statut : {error}" },
+  "lookup.rateTitle": { en: "How was your consultation?", fr: "Comment s'est passée votre consultation ?" },
+  "lookup.starLabel": { en: "{n} star", fr: "{n} étoile" },
+  "lookup.commentPlaceholder": { en: "Optional comment", fr: "Commentaire facultatif" },
+  "lookup.submitRating": { en: "Submit Rating", fr: "Envoyer l'évaluation" },
+  "lookup.submittingRating": { en: "Submitting...", fr: "Envoi..." },
+  "lookup.ratingThanks": { en: "Thank you for your feedback.", fr: "Merci pour votre retour." },
+  "lookup.err.ratingFailed": { en: "Could not submit your rating. Please try again.", fr: "Impossible d'envoyer votre évaluation. Veuillez réessayer." },
 
   // --------------------------------------------------------------------
   // CHECK-IN (account-free client flow)
