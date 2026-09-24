@@ -659,6 +659,7 @@ export default function App() {
   const [ticketStats, setTicketStats] = useState(null);
   const [phoneSearch, setPhoneSearch] = useState("");
   const [phoneSearchResults, setPhoneSearchResults] = useState(null);
+  const [phoneSearchNotes, setPhoneSearchNotes] = useState({});
   const [phoneSearchBusy, setPhoneSearchBusy] = useState(false);
   const [urgentTickets, setUrgentTickets] = useState([]);
   async function loadUrgentTickets() {
@@ -679,9 +680,22 @@ export default function App() {
     const { data, error } = await supabase.from("tickets").select("*")
       .ilike("client_phone", "%" + phoneSearch.trim() + "%")
       .order("created_at", { ascending: false });
-    setPhoneSearchBusy(false);
-    if (error) { notify(t("admin.err.searchFailed", { error: error.message }), false); return; }
+    if (error) { setPhoneSearchBusy(false); notify(t("admin.err.searchFailed", { error: error.message }), false); return; }
     setPhoneSearchResults(data || []);
+    // Admin oversight: pull the doctor's detailed clinical notes for any
+    // resolved ticket in these results too - ticket_clinical_notes already
+    // has a clinical_notes_select_admin RLS policy allowing this, the UI
+    // just never surfaced it. resolution_summary (the client-facing plain
+    // summary) is already a column on the ticket itself, no extra query
+    // needed for that part.
+    const resolvedIds = (data || []).filter(tk => tk.status === "resolved").map(tk => tk.id);
+    if (resolvedIds.length > 0) {
+      const { data: notes } = await supabase.from("ticket_clinical_notes").select("*").in("ticket_id", resolvedIds);
+      setPhoneSearchNotes(Object.fromEntries((notes || []).map(n => [n.ticket_id, n])));
+    } else {
+      setPhoneSearchNotes({});
+    }
+    setPhoneSearchBusy(false);
   }
   async function loadTicketStats() {
     const { data, error } = await supabase.from("tickets").select("status, severity_level");
@@ -1553,7 +1567,9 @@ export default function App() {
                 phoneSearchResults.length === 0 ? (
                   <div style={{ fontSize: 12, color: C.muted }}>{t("admin.noTicketsFoundForNumber")}</div>
                 ) : (
-                  phoneSearchResults.map(tk => (
+                  phoneSearchResults.map(tk => {
+                    const notes = phoneSearchNotes[tk.id];
+                    return (
                     <div key={tk.id} style={{ borderTop: "1px solid " + C.surf, paddingTop: 10, marginTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                         <Tag kind={tk.status}>{t("status." + tk.status)}</Tag>
@@ -1561,8 +1577,24 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 12, color: C.ink }}>{tk.onset}</div>
                       <div style={{ fontSize: 11, color: C.muted }}>{t("admin.severityCodePhone", { level: tk.severity_level, code: tk.client_code, phone: tk.client_phone })}</div>
+                      {tk.status === "resolved" && tk.resolution_summary && (
+                        <div style={{ fontSize: 12, color: C.ink, background: C.surf, borderRadius: 8, padding: 10, marginTop: 8 }}>
+                          <strong>{t("admin.summaryFromProfessional")}</strong><br />{tk.resolution_summary}
+                        </div>
+                      )}
+                      {notes && (
+                        <div style={{ fontSize: 12, color: C.ink, background: C.surf, borderRadius: 8, padding: 10, marginTop: 8 }}>
+                          <strong>{t("admin.clinicalNotes")}</strong>
+                          {notes.objective_assessment && <div style={{ marginTop: 6 }}><em>{t("admin.notesObjective")}:</em> {notes.objective_assessment}</div>}
+                          {notes.clinical_diagnosis && <div style={{ marginTop: 6 }}><em>{t("admin.notesDiagnosis")}:</em> {notes.clinical_diagnosis}</div>}
+                          {notes.plan && <div style={{ marginTop: 6 }}><em>{t("admin.notesPlan")}:</em> {notes.plan}</div>}
+                          {notes.implementation && <div style={{ marginTop: 6 }}><em>{t("admin.notesImplementation")}:</em> {notes.implementation}</div>}
+                          {notes.evaluation && <div style={{ marginTop: 6 }}><em>{t("admin.notesEvaluation")}:</em> {notes.evaluation}</div>}
+                        </div>
+                      )}
                     </div>
-                  ))
+                    );
+                  })
                 )
               )}
             </div>
