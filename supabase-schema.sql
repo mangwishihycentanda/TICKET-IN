@@ -176,17 +176,21 @@ create policy "tickets_insert_own_client" on public.tickets
 
 -- Client-side UPDATE deliberately does NOT allow status changes at all -
 -- form_submitted -> open happens only via the payment-confirmation server
--- path (service_role), open -> claimed only via claim-ticket.js
--- (service_role, atomic), and in_progress/resolved transitions happen via
--- a dedicated staff-update endpoint, not a bare client update. This
--- policy only covers non-status edits by the admin for corrections.
+-- path (service_role), open -> claimed only via claim-ticket.js, claimed
+-- -> in_progress only via start-consultation.js, and in_progress ->
+-- resolved only via resolve-ticket.js (all service_role, all atomic).
+-- There is deliberately no client-update RLS policy for staff at all -
+-- an earlier "using (auth.uid() = claimed_by)" policy with no "with
+-- check" looked like it only let a claimed staff member touch their own
+-- ticket, but with no check clause it actually permitted rewriting ANY
+-- column (status, claimed_by, resolution fields, even the client's own
+-- OLDCART intake) straight from the browser. See migration
+-- 20260924_lock_down_ticket_updates.sql. This policy only covers
+-- non-status edits by the admin for corrections.
 create policy "tickets_update_admin" on public.tickets
   for update using (
     exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
   );
-
-create policy "tickets_update_claimed_staff" on public.tickets
-  for update using (auth.uid() = claimed_by);
 
 
 -- ============================================================================
