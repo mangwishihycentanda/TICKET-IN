@@ -466,10 +466,32 @@ export default function App() {
   const [lookupResult, setLookupResult] = useState(null);
   const [lookupError, setLookupError] = useState("");
   const [lookupBusy, setLookupBusy] = useState(false);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingDone, setRatingDone] = useState(false);
+
+  async function submitRating() {
+    if (ratingValue < 1) return;
+    setRatingBusy(true);
+    const res = await fetch("/api/submit-rating", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticketId: lookupResult.id, phone: lookupPhone.trim(), code: lookupCode.trim(),
+        rating: ratingValue, comment: ratingComment,
+      }),
+    });
+    const body = await res.json();
+    setRatingBusy(false);
+    if (!res.ok) { notify(body.error || t("lookup.err.ratingFailed"), false); return; }
+    setRatingDone(true);
+    notify(t("lookup.ratingThanks"));
+  }
 
   async function doLookup() {
     if (!lookupPhone.trim() || !lookupCode.trim()) { setLookupError(t("lookup.enterBoth")); return; }
     setLookupBusy(true); setLookupError(""); setLookupResult(null);
+    setRatingValue(0); setRatingComment(""); setRatingDone(false);
     try {
       const res = await fetch("/api/lookup-ticket", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -941,6 +963,31 @@ export default function App() {
             {lookupResult.status === "resolved" && lookupResult.resolution_summary && (
               <div style={{ marginTop: 12, fontSize: 13, color: C.body, lineHeight: 1.6 }}>
                 <strong>{t("lookup.summaryFromProfessional")}</strong><br />{lookupResult.resolution_summary}
+              </div>
+            )}
+            {lookupResult.status === "resolved" && !lookupResult.already_rated && !ratingDone && (
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid " + C.surf }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>{t("lookup.rateTitle")}</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <button key={n} onClick={() => setRatingValue(n)}
+                      aria-label={t("lookup.starLabel", { n })}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer", padding: 2,
+                        fontSize: 28, lineHeight: 1, color: n <= ratingValue ? C.gold : C.border,
+                      }}>&#9733;</button>
+                  ))}
+                </div>
+                <textarea value={ratingComment} onChange={e => setRatingComment(e.target.value)}
+                  placeholder={t("lookup.commentPlaceholder")} rows={3}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "1.5px solid " + C.border, fontSize: 13, fontFamily: "system-ui", outline: "none", resize: "vertical", boxSizing: "border-box", marginBottom: 10 }} />
+                <Btn label={ratingBusy ? t("lookup.submittingRating") : t("lookup.submitRating")} primary full
+                  loading={ratingBusy} disabled={ratingValue < 1} onClick={submitRating} />
+              </div>
+            )}
+            {lookupResult.status === "resolved" && (lookupResult.already_rated || ratingDone) && (
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid " + C.surf, fontSize: 13, color: C.muted }}>
+                {t("lookup.ratingThanks")}
               </div>
             )}
           </div>
